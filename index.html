@@ -66,28 +66,29 @@
         background-color: #45a049;
       }
       
-      /* Login Modal */
-      #login-modal {
+      /* Full-Screen Login Screen */
+      #login-screen {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(0,0,0,0.7);
+        background-color: #f8f8f8;
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 1000;
       }
-      
-      .modal-content {
+
+      .login-content {
+        text-align: center;
         background-color: white;
         padding: 30px;
         border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         width: 300px;
-        text-align: center;
       }
-      
+
       #name-input {
         width: 100%;
         padding: 10px;
@@ -96,7 +97,16 @@
         border-radius: 4px;
         box-sizing: border-box;
       }
-      
+
+      #join-code-input {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0 20px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+
       #login-btn {
         background-color: #4CAF50;
         color: white;
@@ -106,7 +116,26 @@
         cursor: pointer;
         font-size: 16px;
       }
+
+      #join-session-btn {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
       
+      #start-session-btn {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
       /* Lobby */
       #lobby {
         display: none;
@@ -147,12 +176,14 @@
   </head>
   
   <body>
-    <!-- Login Modal -->
-    <div id="login-modal">
-      <div class="modal-content">
-        <h2>Enter Your Name</h2>
+    <!-- Full-Screen Login Screen -->
+    <div id="login-screen">
+      <div class="login-content">
+        <h2>Welcome</h2>
         <input type="text" id="name-input" placeholder="Your name" maxlength="20" />
-        <button id="login-btn">Enter</button>
+        <input type="text" id="join-code-input" placeholder="Join Code" maxlength="20" />
+        <button id="join-session-btn">Join Session</button>
+        <button id="start-session-btn">Start Session</button>
       </div>
     </div>
     
@@ -181,9 +212,12 @@
       const socket = io();
       
       // DOM elements
-      const loginModal = document.getElementById('login-modal');
+      const loginScreen = document.getElementById('login-screen');
       const nameInput = document.getElementById('name-input');
       const loginBtn = document.getElementById('login-btn');
+      const joinCodeInput = document.getElementById('join-code-input');
+      const joinSessionBtn = document.getElementById('join-session-btn');
+      const startSessionBtn = document.getElementById('start-session-btn');
       const lobby = document.getElementById('lobby');
       const userList = document.getElementById('user-list');
       const startDraftBtn = document.getElementById('start-draft-btn');
@@ -199,39 +233,53 @@
       let hasPrivilege = false;
       let connectedUsers = [];
       
-      // Register user when they submit their name
-      loginBtn.addEventListener('click', () => {
+      // // Register user when they submit their name
+      // loginBtn.addEventListener('click', () => {
+      //   const name = nameInput.value.trim();
+      //   if (name) {
+      //     loginBtn.disabled = true;
+      //     loginBtn.textContent = 'Connecting...';
+      //     socket.emit('register name', name);
+      //   }
+      // });
+
+      joinSessionBtn.addEventListener('click', () => {
         const name = nameInput.value.trim();
-        if (name) {
-          loginBtn.disabled = true;
-          loginBtn.textContent = 'Connecting...';
-          socket.emit('register name', name);
+        const joinCode = joinCodeInput.value.trim();
+
+        if (name && joinCode) {
+          joinSessionBtn.disabled = true;
+          joinSessionBtn.textContent = 'Connecting...';
+          socket.emit('register name', name, joinCode);
         }
       });
-      
-      // Handle name input with Enter key
-      nameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          loginBtn.click();
-        }
-      });
+
+      // startSessionBtn.addEventListener('click', () => {
+      //   const name = nameInput.value.trim();
+
+      //   if (name && joinCode) {
+      //     startSessionBtn.disabled = true;
+      //     startSessionBtn.textContent = 'Connecting...';
+      //     socket.emit('start session', { name, joinCode });
+      //   }
+      // });
       
       // Registration confirmation
       socket.on('registration confirmed', (user) => {
         currentUser = user;
-        loginModal.style.display = 'none';
+        loginScreen.style.display = 'none';
         lobby.style.display = 'block';
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Enter';
+        joinSessionBtn.disabled = false;
+        joinSessionBtn.textContent = 'Join Session';
       });
       
       // Registration rejection - draft already started
       socket.on('registration rejected', (message) => {
         // Reset login button
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Enter';
+        joinSessionBtn.disabled = false;
+        joinSessionBtn.textContent = 'Join Session';
         
-        // Show error message in the modal
+        // Show error message in the login screen
         const errorDiv = document.createElement('div');
         errorDiv.style.color = 'red';
         errorDiv.style.marginTop = '10px';
@@ -246,8 +294,8 @@
         // Add the error class for easier removal later
         errorDiv.classList.add('error-message');
         
-        // Add to modal content
-        document.querySelector('.modal-content').appendChild(errorDiv);
+        // Add to login content
+        document.querySelector('.login-content').appendChild(errorDiv);
       });
       
       // Lobby updates

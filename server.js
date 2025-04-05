@@ -28,7 +28,14 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   // Register user name
-  socket.on('register name', (name) => {
+  socket.on('register name', (name, joinCode) => {
+
+    console.log(`User ${name} (${socket.id}) trying to register with join code: ${joinCode}`);
+
+    if (joinCode !== 'sm-draft-sp2025') {
+      socket.emit('registration rejected', 'Invalid join code. Please try again.');
+      return;
+    } 
     // Check if draft has already started - reject new registrations
     if (isDraftStarted) {
       socket.emit('registration rejected', 'Sorry, the draft has already started. Please try again later.');
