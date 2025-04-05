@@ -1,352 +1,304 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Socket.IO chat</title>
-    <style>
-      body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staffing Draft</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      background-color: #f9f9f9;
+      color: #333;
+    }
 
-      #form { background: rgba(0, 0, 0, 0.15); padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
-      #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
-      #input:focus { outline: none; }
-      #form > button { background: #333; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; }
+    h2, h3 {
+      margin-top: 1.5rem;
+      color: #222;
+    }
 
-      #messages { list-style-type: none; margin: 0; padding: 0; }
-      #messages > li { padding: 0.5rem 1rem; }
-      #messages > li:nth-child(odd) { background: #efefef; }
-      
-      /* System messages and status */
-      .system-message { 
-        color: #666; 
-        font-style: italic; 
-        background-color: #f8f8f8 !important;
-      }
-      #status-bar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        padding: 0.5rem;
-        background-color: #f1f1f1;
-        border-bottom: 1px solid #ddd;
-        text-align: center;
-        font-weight: bold;
-        z-index: 100;
-      }
-      .has-privilege {
-        color: green;
-      }
-      .no-privilege {
-        color: #999;
-      }
-      .content {
-        margin-top: 2.5rem;
-      }
-      /* Disabled input styling */
-      .disabled {
-        background-color: #f1f1f1;
-        color: #999;
-      }
-      
-      #pass-control-btn {
-        position: fixed;
-        top: 0.5rem;
-        right: 1rem;
-        background-color: #4CAF50;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        display: none; /* Hidden by default */
-        z-index: 101;
-      }
-      
-      #pass-control-btn:hover {
-        background-color: #45a049;
-      }
-      
-      /* Login Modal */
-      #login-modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-      }
-      
-      .modal-content {
-        background-color: white;
-        padding: 30px;
-        border-radius: 8px;
-        width: 300px;
-        text-align: center;
-      }
-      
-      #name-input {
-        width: 100%;
-        padding: 10px;
-        margin: 10px 0 20px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-sizing: border-box;
-      }
-      
-      #login-btn {
-        background-color: #4CAF50;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 16px;
-      }
-      
-      /* Lobby */
-      #lobby {
-        display: none;
-        margin-top: 2.5rem;
-        padding: 20px;
-        text-align: center;
-      }
-      
-      #user-list {
-        list-style-type: none;
-        padding: 0;
-        margin: 20px auto;
-        max-width: 400px;
-        text-align: left;
-      }
-      
-      #user-list li {
-        padding: 10px;
-        border-bottom: 1px solid #eee;
-      }
-      
-      #start-draft-btn {
-        background-color: #4CAF50;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 16px;
-        margin-top: 20px;
-      }
-      
-      /* Chat area */
-      #chat-area {
-        display: none;
-      }
-    </style>
-  </head>
-  
-  <body>
-    <!-- Login Modal -->
-    <div id="login-modal">
-      <div class="modal-content">
-        <h2>Enter Your Name</h2>
-        <input type="text" id="name-input" placeholder="Your name" maxlength="20" />
-        <button id="login-btn">Enter</button>
-      </div>
+    #login-modal, #lobby, #draft-interface {
+      display: none;
+      padding: 2rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    #login-modal {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #login-modal input, button {
+      padding: 10px;
+      font-size: 1rem;
+      margin: 10px 0;
+      width: 100%;
+      max-width: 300px;
+      box-sizing: border-box;
+    }
+
+    #login-btn, #start-draft, #pick-btn, #pass-btn {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #login-btn:hover, #start-draft:hover, #pick-btn:hover, #pass-btn:hover {
+      background-color: #45a049;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 0;
+    }
+
+    li {
+      padding: 8px 12px;
+      border-bottom: 1px solid #eee;
+      background-color: white;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    li:hover {
+      background-color: #f1f1f1;
+      cursor: pointer;
+    }
+
+    .disabled {
+      color: #999;
+      background-color: #eee !important;
+      text-decoration: line-through;
+      pointer-events: none;
+    }
+
+    .highlight {
+      background-color: #d1e7dd !important;
+      font-weight: bold;
+    }
+
+    select {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    #status {
+      background-color: #e1e1e1;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    #consultants {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 0;
+      background: #fff;
+    }
+
+    #project-list {
+      background-color: #fff;
+      padding: 10px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section {
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Modal -->
+  <div id="login-modal">
+    <h2>Enter Your SM UserID</h2>
+    <input id="userid-input" placeholder="e.g., sm1" />
+    <button id="login-btn">Enter</button>
+  </div>
+
+  <!-- Lobby -->
+  <div id="lobby">
+    <h2>Lobby</h2>
+    <p>Waiting for other SMs to join...</p>
+    <ul id="user-list"></ul>
+    <button id="start-draft">Start Draft</button>
+  </div>
+
+  <!-- Draft Interface -->
+  <div id="draft-interface">
+    <h2 id="status">Waiting...</h2>
+
+    <div class="section">
+      <h3>Your Projects</h3>
+      <div id="project-list"></div>
     </div>
-    
-    <!-- Lobby -->
-    <div id="lobby">
-      <h2>Waiting Room</h2>
-      <p>Currently connected users:</p>
-      <ul id="user-list"></ul>
-      <button id="start-draft-btn">Start Draft</button>
+
+    <div class="section">
+      <h3>Available Consultants</h3>
+      <ul id="consultants"></ul>
     </div>
-    
-    <!-- Chat UI -->
-    <div id="chat-area">
-      <div id="status-bar">Loading chat privileges...</div>
-      <button id="pass-control-btn">Pass Control</button>
-      <div class="content">
-        <ul id="messages"></ul>
-      </div>
-      <form id="form" action="">
-        <input id="input" autocomplete="off" /><button>Send</button>
-      </form>
+
+    <div class="section">
+      <label for="project-select">Select Project:</label><br />
+      <select id="project-select"></select><br />
+      <button id="pick-btn" disabled>Pick Selected Consultant</button>
+      <button id="pass-btn" disabled>Pass</button>
     </div>
-    
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-      const socket = io();
-      
-      // DOM elements
-      const loginModal = document.getElementById('login-modal');
-      const nameInput = document.getElementById('name-input');
-      const loginBtn = document.getElementById('login-btn');
-      const lobby = document.getElementById('lobby');
-      const userList = document.getElementById('user-list');
-      const startDraftBtn = document.getElementById('start-draft-btn');
-      const chatArea = document.getElementById('chat-area');
-      const form = document.getElementById('form');
-      const input = document.getElementById('input');
-      const messages = document.getElementById('messages');
-      const statusBar = document.getElementById('status-bar');
-      const passControlBtn = document.getElementById('pass-control-btn');
-      
-      // Application state
-      let currentUser = null;
-      let hasPrivilege = false;
-      let connectedUsers = [];
-      
-      // Register user when they submit their name
-      loginBtn.addEventListener('click', () => {
-        const name = nameInput.value.trim();
-        if (name) {
-          loginBtn.disabled = true;
-          loginBtn.textContent = 'Connecting...';
-          socket.emit('register name', name);
-        }
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let currentUser = null;
+    let assignedProjects = {};
+    let allConsultants = {};
+    let drafted = new Set();
+    let currentConsultantId = null;
+    let hasPrivilege = false;
+
+    const loginModal = document.getElementById('login-modal');
+    const useridInput = document.getElementById('userid-input');
+    const loginBtn = document.getElementById('login-btn');
+    const lobby = document.getElementById('lobby');
+    const userList = document.getElementById('user-list');
+    const startBtn = document.getElementById('start-draft');
+    const draftInterface = document.getElementById('draft-interface');
+    const status = document.getElementById('status');
+    const projectList = document.getElementById('project-list');
+    const consultantList = document.getElementById('consultants');
+    const projectSelect = document.getElementById('project-select');
+    const pickBtn = document.getElementById('pick-btn');
+    const passBtn = document.getElementById('pass-btn');
+
+    loginModal.style.display = 'flex';
+
+    loginBtn.onclick = () => {
+      const id = useridInput.value.trim();
+      if (id) {
+        socket.emit('register sm', { UserID: id });
+      }
+    };
+
+    socket.on('registration confirmed', (user) => {
+      currentUser = user;
+      loginModal.style.display = 'none';
+      lobby.style.display = 'block';
+    });
+
+    socket.on('lobby update', (users) => {
+      userList.innerHTML = '';
+      users.forEach(u => {
+        const li = document.createElement('li');
+        li.textContent = u.name + (u.id === currentUser.id ? ' (You)' : '');
+        userList.appendChild(li);
       });
-      
-      // Handle name input with Enter key
-      nameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          loginBtn.click();
-        }
-      });
-      
-      // Registration confirmation
-      socket.on('registration confirmed', (user) => {
-        currentUser = user;
-        loginModal.style.display = 'none';
-        lobby.style.display = 'block';
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Enter';
-      });
-      
-      // Registration rejection - draft already started
-      socket.on('registration rejected', (message) => {
-        // Reset login button
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Enter';
-        
-        // Show error message in the modal
-        const errorDiv = document.createElement('div');
-        errorDiv.style.color = 'red';
-        errorDiv.style.marginTop = '10px';
-        errorDiv.textContent = message;
-        
-        // Remove any existing error messages
-        const existingError = document.querySelector('.error-message');
-        if (existingError) {
-          existingError.remove();
-        }
-        
-        // Add the error class for easier removal later
-        errorDiv.classList.add('error-message');
-        
-        // Add to modal content
-        document.querySelector('.modal-content').appendChild(errorDiv);
-      });
-      
-      // Lobby updates
-      socket.on('lobby update', (users) => {
-        connectedUsers = users;
-        updateUserList();
-      });
-      
-      // Update the user list in the lobby
-      function updateUserList() {
-        userList.innerHTML = '';
-        connectedUsers.forEach(user => {
-          const li = document.createElement('li');
-          li.textContent = user.name;
-          if (user.id === currentUser?.id) {
-            li.textContent += ' (you)';
-            li.style.fontWeight = 'bold';
-          }
-          userList.appendChild(li);
+    });
+
+    startBtn.onclick = () => socket.emit('start draft');
+
+    socket.on('draft started', () => {
+      lobby.style.display = 'none';
+      draftInterface.style.display = 'block';
+    });
+
+    socket.on('assigned projects', (projects) => {
+      assignedProjects = projects;
+      renderProjects();
+    });
+
+    socket.on('all consultants', (consultants) => {
+      allConsultants = consultants;
+      renderConsultants();
+    });
+
+    socket.on('draft status update', (smProjectsMap) => {
+      drafted.clear();
+      assignedProjects = smProjectsMap[currentUser.userId] || {};
+      Object.values(smProjectsMap).forEach(projects => {
+        Object.values(projects).forEach(p => {
+          p.NC.forEach(nc => drafted.add(nc.UserID));
         });
-      }
-      
-      // Start draft button
-      startDraftBtn.addEventListener('click', () => {
-        socket.emit('start draft');
       });
-      
-      // Draft started
-      socket.on('draft started', (users) => {
-        connectedUsers = users;
-        lobby.style.display = 'none';
-        chatArea.style.display = 'block';
-        
-        // Add a system message about draft starting
-        const item = document.createElement('li');
-        item.textContent = 'Draft has started! The order has been randomized.';
-        item.classList.add('system-message');
-        messages.appendChild(item);
-      });
+      renderProjects();
+      renderConsultants();
+    });
 
-      // Handle chat form submission
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (input.value && !input.disabled) {
-          socket.emit('chat message', input.value);
-          input.value = '';
+    socket.on('privilege update', (user) => {
+      hasPrivilege = user.id === currentUser.id;
+      status.textContent = hasPrivilege ? '✅ Your Turn to Pick' : `🕒 ${user.name}'s Turn`;
+      pickBtn.disabled = !hasPrivilege;
+      passBtn.disabled = !hasPrivilege;
+    });
+
+    function renderProjects() {
+      projectList.innerHTML = '';
+      projectSelect.innerHTML = '';
+      for (const [projectId, data] of Object.entries(assignedProjects)) {
+        const div = document.createElement('div');
+        const ncList = (data.NC || []).map(nc => nc.Name).join(', ') || 'None';
+        div.innerHTML = `
+          <strong>${projectId}</strong><br>
+          PM: ${data.PM}<br>
+          SCs: ${data.SC.join(', ')}<br>
+          <strong>NCs:</strong> ${ncList}<br><br>
+        `;
+        projectList.appendChild(div);
+
+        const opt = document.createElement('option');
+        opt.value = projectId;
+        opt.textContent = projectId;
+        projectSelect.appendChild(opt);
+      }
+    }
+
+    function renderConsultants() {
+      consultantList.innerHTML = '';
+      Object.values(allConsultants).forEach(c => {
+        const li = document.createElement('li');
+        li.textContent = `${c.Name} (${c.UserID}) - ${c.Major}, Year ${c.Year}`;
+        li.className = drafted.has(c.UserID) ? 'disabled' : '';
+        li.onclick = () => {
+          if (!hasPrivilege || drafted.has(c.UserID)) return;
+          currentConsultantId = c.UserID;
+          document.querySelectorAll('#consultants li').forEach(el => el.classList.remove('highlight'));
+          li.classList.add('highlight');
+        };
+        consultantList.appendChild(li);
+      });
+    }
+
+    pickBtn.onclick = () => {
+      if (currentConsultantId) {
+        const projectId = projectSelect.value;
+        const consultant = Object.values(allConsultants).find(c => c.UserID === currentConsultantId);
+        if (!consultant) return;
+        const confirmMsg = `Are you sure you want to select ${consultant.Name} for ${projectId}?`;
+        if (confirm(confirmMsg)) {
+          socket.emit('pick consultant', { consultantId: currentConsultantId, projectId });
+          currentConsultantId = null;
         }
-      });
-      
-      // Handle chat messages
-      socket.on('chat message', (msg) => {
-        const item = document.createElement('li');
-        item.textContent = msg;
-        messages.appendChild(item);
-        window.scrollTo(0, document.body.scrollHeight);
-      });
-      
-      // Handle system messages
-      socket.on('system message', (msg) => {
-        const item = document.createElement('li');
-        item.textContent = msg;
-        item.classList.add('system-message');
-        messages.appendChild(item);
-        window.scrollTo(0, document.body.scrollHeight);
-      });
-      
-      // Pass control button
-      passControlBtn.addEventListener('click', () => {
-        if (hasPrivilege) {
-          socket.emit('pass control');
-        }
-      });
-      
-      // Update privileges
-      socket.on('privilege update', (privilegedUser) => {
-        // Check if the current user has privileges
-        hasPrivilege = (privilegedUser.id === currentUser?.id);
-        
-        // Update the status bar and pass control button
-        if (hasPrivilege) {
-          statusBar.textContent = "You have chat privileges";
-          statusBar.className = "has-privilege";
-          input.disabled = false;
-          input.classList.remove('disabled');
-          input.placeholder = "Type your message...";
-          
-          // Show the pass control button
-          passControlBtn.style.display = "block";
-        } else {
-          statusBar.textContent = `${privilegedUser.name} has chat privileges`;
-          statusBar.className = "no-privilege";
-          input.disabled = true;
-          input.classList.add('disabled');
-          input.placeholder = "Waiting for your turn to chat...";
-          
-          // Hide the pass control button
-          passControlBtn.style.display = "none";
-        }
-      });
-    </script>
-  </body>
+      }
+    };
+
+    passBtn.onclick = () => socket.emit('pass control');
+  </script>
+</body>
 </html>
