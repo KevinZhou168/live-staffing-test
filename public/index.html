@@ -40,7 +40,7 @@
       box-sizing: border-box;
     }
 
-    #login-btn, #start-draft, #pick-btn, #pass-btn {
+    #login-btn, #start-draft, #pick-btn {
       background-color: #4CAF50;
       color: white;
       border: none;
@@ -48,8 +48,13 @@
       cursor: pointer;
     }
 
-    #login-btn:hover, #start-draft:hover, #pick-btn:hover, #pass-btn:hover {
+    #login-btn:hover, #start-draft:hover, #pick-btn:hover {
       background-color: #45a049;
+    }
+
+    #pick-btn:disabled {
+      background-color: #ccc !important;
+      cursor: not-allowed;
     }
 
     ul {
@@ -131,6 +136,7 @@
   <div id="login-modal">
     <h2>Enter Your SM UserID</h2>
     <input id="userid-input" placeholder="e.g., sm1" />
+    <input id="passcode-input" placeholder="Enter Join Code" />
     <button id="login-btn">Enter</button>
   </div>
 
@@ -160,7 +166,6 @@
       <label for="project-select">Select Project:</label><br />
       <select id="project-select"></select><br />
       <button id="pick-btn" disabled>Pick Selected Consultant</button>
-      <button id="pass-btn" disabled>Pass</button>
     </div>
   </div>
 
@@ -176,6 +181,7 @@
 
     const loginModal = document.getElementById('login-modal');
     const useridInput = document.getElementById('userid-input');
+    const passcodeInput = document.getElementById('passcode-input');
     const loginBtn = document.getElementById('login-btn');
     const lobby = document.getElementById('lobby');
     const userList = document.getElementById('user-list');
@@ -186,14 +192,14 @@
     const consultantList = document.getElementById('consultants');
     const projectSelect = document.getElementById('project-select');
     const pickBtn = document.getElementById('pick-btn');
-    const passBtn = document.getElementById('pass-btn');
 
     loginModal.style.display = 'flex';
 
     loginBtn.onclick = () => {
       const id = useridInput.value.trim();
-      if (id) {
-        socket.emit('register sm', { UserID: id });
+      const code = passcodeInput.value.trim();
+      if (id && code) {
+        socket.emit('register sm', { UserID: id, joinCode: code });
       }
     };
 
@@ -245,7 +251,7 @@
       hasPrivilege = user.id === currentUser.id;
       status.textContent = hasPrivilege ? '✅ Your Turn to Pick' : `🕒 ${user.name}'s Turn`;
       pickBtn.disabled = !hasPrivilege;
-      passBtn.disabled = !hasPrivilege;
+      renderConsultants();
     });
 
     function renderProjects() {
@@ -274,13 +280,19 @@
       Object.values(allConsultants).forEach(c => {
         const li = document.createElement('li');
         li.textContent = `${c.Name} (${c.UserID}) - ${c.Major}, Year ${c.Year}`;
-        li.className = drafted.has(c.UserID) ? 'disabled' : '';
-        li.onclick = () => {
-          if (!hasPrivilege || drafted.has(c.UserID)) return;
-          currentConsultantId = c.UserID;
-          document.querySelectorAll('#consultants li').forEach(el => el.classList.remove('highlight'));
-          li.classList.add('highlight');
-        };
+        if (drafted.has(c.UserID)) {
+          li.classList.add('disabled');
+        } else if (hasPrivilege) {
+          li.classList.remove('disabled');
+          li.onclick = () => {
+            currentConsultantId = c.UserID;
+            document.querySelectorAll('#consultants li').forEach(el => el.classList.remove('highlight'));
+            li.classList.add('highlight');
+          };
+        } else {
+          li.classList.remove('highlight');
+          li.onclick = null;
+        }
         consultantList.appendChild(li);
       });
     }
@@ -297,9 +309,6 @@
         }
       }
     };
-
-    passBtn.onclick = () => socket.emit('pass control');
   </script>
 </body>
 </html>
-

@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const { createServer } = require('node:http');
 const { join } = require('node:path');
@@ -8,11 +7,11 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
+app.use(express.static(join(__dirname, 'public')));
 app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'public/index.html'));
 });
 
-// Dummy consultant data
 let allConsultants = {
   c1: {
     UserID: 'c1',
@@ -62,19 +61,27 @@ let isInitialTurn = true;
 let isDraftStarted = false;
 
 io.on('connection', (socket) => {
-  socket.on('register sm', ({ UserID }) => {
+  socket.on('register sm', ({ UserID, joinCode }) => {
+    if (joinCode !== 'sp2025') {
+      socket.emit('registration rejected', 'Invalid join code.');
+      return;
+    }
+
     if (isDraftStarted) {
       socket.emit('registration rejected', 'Draft already started.');
       return;
     }
+
     if (drafters.find((u) => u.id === socket.id)) return;
     const smData = allSMs[UserID];
     if (!smData) {
       socket.emit('registration rejected', 'SM not found.');
       return;
     }
+
     const newDrafter = { id: socket.id, userId: UserID, name: smData.Name };
     drafters.push(newDrafter);
+
     socket.emit('registration confirmed', newDrafter);
     socket.emit('assigned projects', smProjectsMap[UserID] || {});
     socket.emit('all consultants', allConsultants);
@@ -102,41 +109,28 @@ io.on('connection', (socket) => {
       socket.emit('system message', 'Not your turn.');
       return;
     }
+
     if (draftedConsultants.has(consultantId)) {
       socket.emit('system message', 'Already picked.');
       return;
     }
+
     const consultant = allConsultants[consultantId];
     if (!consultant) {
       socket.emit('system message', 'Invalid consultant.');
       return;
     }
+
     const userProjects = smProjectsMap[currentSM.userId];
     if (!userProjects || !userProjects[projectId]) {
       socket.emit('system message', 'Invalid project.');
       return;
     }
+
     userProjects[projectId].NC.push(consultant);
     draftedConsultants.set(consultantId, consultant);
     io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
     emitDraftStatus();
-    rotatePrivileges();
-  });
-
-  socket.on('get consultant details', (consultantId) => {
-    const consultant = allConsultants[consultantId];
-    if (consultant) {
-      socket.emit('consultant details', consultant);
-    } else {
-      socket.emit('system message', 'Consultant not found');
-    }
-  });
-
-  socket.on('pass control', () => {
-    if (socket.id !== drafters[currentPrivilegedUserIndex].id) {
-      socket.emit('system message', 'You do not have control.');
-      return;
-    }
     rotatePrivileges();
   });
 
@@ -155,21 +149,23 @@ io.on('connection', (socket) => {
 });
 
 function rotatePrivileges() {
-  if (drafters.length === 1) {
+  if (drafters.length <= 1) {
     updatePrivileges();
     return;
   }
-  if (drafters.length === 0) return;
 
   const isAtFirst = currentPrivilegedUserIndex === 0;
   const isAtLast = currentPrivilegedUserIndex === drafters.length - 1;
+
   if ((isAtLast || (isAtFirst && !isInitialTurn)) && !isSecondTurn) {
     isSecondTurn = true;
     updatePrivileges();
     return;
   }
+
   isSecondTurn = false;
   if (isInitialTurn) isInitialTurn = false;
+
   if (movingForward) {
     currentPrivilegedUserIndex++;
     if (currentPrivilegedUserIndex >= drafters.length - 1) {
@@ -183,6 +179,7 @@ function rotatePrivileges() {
       movingForward = true;
     }
   }
+
   updatePrivileges();
 }
 
