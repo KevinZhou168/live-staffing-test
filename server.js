@@ -2,6 +2,7 @@ const express = require('express');
 const { createServer } = require('node:http');
 const { join } = require('node:path');
 const { Server } = require('socket.io');
+const { postToGoogleSheet } = require('./handleStaffingHistory');
 
 const app = express();
 const server = createServer(app);
@@ -130,6 +131,18 @@ io.on('connection', (socket) => {
     userProjects[projectId].NC.push(consultant);
     draftedConsultants.set(consultantId, consultant);
     io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
+    
+    //  sheet.appendRow([timestamp, data.smId, data.smName, data.consultantId, data.consultantName, data.projectId, data.projectName]);
+
+    const data = {
+      smId: currentSM.userId,
+      smName: currentSM.name,
+      consultantId: consultant.UserID,
+      consultantName: consultant.Name,
+      projectId: projectId,
+      projectName: projectId
+    }
+    postToGoogleSheet(data);
     emitDraftStatus();
     rotatePrivileges();
   });
