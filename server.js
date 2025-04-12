@@ -132,17 +132,16 @@ io.on('connection', (socket) => {
     draftedConsultants.set(consultantId, consultant);
     io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
     
-    //  sheet.appendRow([timestamp, data.smId, data.smName, data.consultantId, data.consultantName, data.projectId, data.projectName]);
-
+    const timestamp = new Date().toLocaleString();
     const data = {
-      timestamp: new Date().toLocaleString(),
+      timestamp: timestamp,
       smId: currentSM.userId,
       smName: currentSM.name,
       consultantId: consultant.UserID,
       consultantName: consultant.Name,
       projectId: projectId,
       projectName: projectId,
-      message: `${currentSM.name} picked ${consultant.Name} for ${projectId} at ${new Date().toLocaleString()}`
+      message: `${currentSM.name} picked ${consultant.Name} for ${projectId} at ${timestamp}`
     }
     postToGoogleSheet(data);
     emitDraftStatus();
