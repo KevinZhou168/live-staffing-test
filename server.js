@@ -23,7 +23,8 @@ let allConsultants = {
     Availability_Mon: 'Morning',
     Availability_Tue: 'Afternoon',
     ConsultantScore: 4.7,
-    FunctionalAreaInterests: 'AI/ML'
+    FunctionalAreaInterests: 'AI/ML',
+    Role: 'NC'
   },
   c2: {
     UserID: 'c2',
@@ -34,7 +35,8 @@ let allConsultants = {
     Availability_Mon: 'Evening',
     Availability_Tue: 'Morning',
     ConsultantScore: 4.3,
-    FunctionalAreaInterests: 'FinTech'
+    FunctionalAreaInterests: 'FinTech',
+    Role: 'EC'
   }
 };
 
@@ -139,9 +141,10 @@ io.on('connection', (socket) => {
       smName: currentSM.name,
       consultantId: consultant.UserID,
       consultantName: consultant.Name,
+      consultantRole: consultant.Role,
       projectId: projectId,
       projectName: projectId,
-      message: `${currentSM.name} picked ${consultant.Name} for ${projectId} at ${timestamp}`
+      message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${projectId} at ${timestamp}`
     }
     postToGoogleSheet(data);
     emitDraftStatus();
