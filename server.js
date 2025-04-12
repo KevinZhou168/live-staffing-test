@@ -135,12 +135,14 @@ io.on('connection', (socket) => {
     //  sheet.appendRow([timestamp, data.smId, data.smName, data.consultantId, data.consultantName, data.projectId, data.projectName]);
 
     const data = {
+      timestamp: new Date().toLocaleString(),
       smId: currentSM.userId,
       smName: currentSM.name,
       consultantId: consultant.UserID,
       consultantName: consultant.Name,
       projectId: projectId,
-      projectName: projectId
+      projectName: projectId,
+      message: `${currentSM.name} picked ${consultant.Name} for ${projectId} at ${new Date().toLocaleString()}`
     }
     postToGoogleSheet(data);
     emitDraftStatus();
