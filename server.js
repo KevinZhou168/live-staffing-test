@@ -73,6 +73,13 @@ io.on('connection', (socket) => {
     }
 
     if (drafters.find((u) => u.id === socket.id)) return;
+    
+    // Check if SM ID is already in use by another user in the lobby
+    if (drafters.find((u) => u.userId === UserID)) {
+      socket.emit('registration rejected', 'This SM ID is already in use by another user.');
+      return;
+    }
+    
     const smData = allSMs[UserID];
     if (!smData) {
       socket.emit('registration rejected', 'SM not found.');
@@ -132,6 +139,15 @@ io.on('connection', (socket) => {
     io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
     emitDraftStatus();
     rotatePrivileges();
+  });
+
+  socket.on('leave lobby', () => {
+    const index = drafters.findIndex((u) => u.id === socket.id);
+    if (index !== -1) {
+      const removed = drafters.splice(index, 1)[0];
+      io.emit('system message', `${removed.name} left the lobby.`);
+      io.emit('lobby update', drafters);
+    }
   });
 
   socket.on('disconnect', () => {

@@ -129,6 +129,18 @@
     .section {
       margin-bottom: 2rem;
     }
+
+    #leave-lobby {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #leave-lobby:hover {
+      background-color: #c82333;
+    }
   </style>
 </head>
 <body>
@@ -145,7 +157,10 @@
     <h2>Lobby</h2>
     <p>Waiting for other SMs to join...</p>
     <ul id="user-list"></ul>
-    <button id="start-draft">Start Draft</button>
+    <div style="display: flex; gap: 10px;">
+      <button id="start-draft">Start Draft</button>
+      <button id="leave-lobby">Leave</button>
+    </div>
   </div>
 
   <!-- Draft Interface -->
@@ -192,6 +207,7 @@
     const consultantList = document.getElementById('consultants');
     const projectSelect = document.getElementById('project-select');
     const pickBtn = document.getElementById('pick-btn');
+    const leaveLobbyBtn = document.getElementById('leave-lobby');
 
     loginModal.style.display = 'flex';
 
@@ -207,6 +223,11 @@
       currentUser = user;
       loginModal.style.display = 'none';
       lobby.style.display = 'block';
+    });
+
+    // Add handler for registration rejection
+    socket.on('registration rejected', (message) => {
+      alert('Registration error: ' + message);
     });
 
     socket.on('lobby update', (users) => {
@@ -308,6 +329,14 @@
           currentConsultantId = null;
         }
       }
+    };
+
+    leaveLobbyBtn.onclick = () => {
+      // if (confirm('Are you sure you want to leave the lobby?')) {
+        socket.emit('leave lobby');
+        lobby.style.display = 'none';
+        loginModal.style.display = 'flex';
+      // }
     };
   </script>
 </body>
