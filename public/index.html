@@ -38,7 +38,10 @@
     <ul id="user-list"></ul>
     
     <!-- Button to start the draft -->
-    <button id="start-draft">Start Draft</button>
+    <div style="display: flex; gap: 10px;">
+      <button id="start-draft">Start Draft</button>
+      <button id="leave-lobby">Leave</button>
+    </div>
   </div>
 
   <!-- Draft Interface -->
@@ -65,7 +68,10 @@
       <select id="project-select"></select><br />
       
       <!-- Button to pick a consultant (disabled by default) -->
-      <button id="pick-btn" disabled>Pick Selected Consultant</button>
+      <div style="display: flex; gap: 10px;">
+        <button id="pick-btn" disabled>Pick Selected Consultant</button>
+        <button id="leave-draft" class="leave-btn">Leave Draft</button>
+      </div>
     </div>
   </div>
 

@@ -23,6 +23,8 @@ const projectList = document.getElementById('project-list');
 const consultantList = document.getElementById('consultants');
 const projectSelect = document.getElementById('project-select');
 const pickBtn = document.getElementById('pick-btn');
+const leaveLobbyBtn = document.getElementById('leave-lobby');
+const leaveDraftBtn = document.getElementById('leave-draft');
 
 // Show the login modal when the app starts
 loginModal.style.display = 'flex';
@@ -59,10 +61,21 @@ startBtn.onclick = () => {
     socket.emit('start draft'); // Emit a 'start draft' event to the server
 };
 
+// Add handler for registration rejection
+socket.on('registration rejected', (message) => {
+    alert('Registration error: ' + message);
+});
+
 // Handle the start of the draft
 socket.on('draft started', () => {
     lobby.style.display = 'none'; // Hide the lobby
     draftInterface.style.display = 'block'; // Show the draft interface
+});
+
+// Add handler for draft rejoined event
+socket.on('draft rejoined', () => {
+    lobby.style.display = 'none';
+    draftInterface.style.display = 'block';
 });
 
 // Receive the projects assigned to the current user
@@ -165,5 +178,21 @@ pickBtn.onclick = () => {
             socket.emit('pick consultant', { consultantId: currentConsultantId, projectId });
             currentConsultantId = null; // Reset the selected consultant ID
         }
+    }
+};
+
+leaveLobbyBtn.onclick = () => {
+    if (confirm('Are you sure you want to leave the lobby?')) {
+        socket.emit('leave lobby');
+        lobby.style.display = 'none';
+        loginModal.style.display = 'flex';
+    }
+};
+
+leaveDraftBtn.onclick = () => {
+    if (confirm('Are you sure you want to leave the draft? You can rejoin later with the same SM ID.')) {
+        socket.emit('leave lobby');
+        draftInterface.style.display = 'none';
+        loginModal.style.display = 'flex';
     }
 };

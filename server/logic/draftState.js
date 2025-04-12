@@ -5,6 +5,9 @@ let movingForward = true;
 let isSecondTurn = false;
 let isInitialTurn = true;
 let isDraftStarted = false;
+let originalDraftOrder = [];
+let turnOwnerUserIdAtDisconnect = null;
+const disconnectedSMs = new Map();
 
 module.exports = {
   draftedConsultants,
@@ -13,5 +16,8 @@ module.exports = {
   movingForward,
   isSecondTurn,
   isInitialTurn,
-  isDraftStarted
+  isDraftStarted,
+  originalDraftOrder,
+  turnOwnerUserIdAtDisconnect,
+  disconnectedSMs,
 };

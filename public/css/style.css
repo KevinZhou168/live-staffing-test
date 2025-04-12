@@ -11,6 +11,18 @@ h3 {
     color: #222;
 }
 
+#leave-lobby, #leave-draft {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+#leave-lobby:hover, #leave-draft:hover {
+    background-color: #c82333;
+}
+
 #login-modal,
 #lobby,
 #draft-interface {

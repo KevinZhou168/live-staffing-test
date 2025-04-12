@@ -7,7 +7,7 @@ const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle
 
 /**
  * Registers all socket event handlers for the application.
- * 
+ *
  * @param {Server} io - The Socket.IO server instance.
  */
 function registerSocketHandlers(io) {
@@ -26,12 +26,68 @@ function registerSocketHandlers(io) {
 
       // Reject registration if the draft has already started
       if (draftState.isDraftStarted) {
-        socket.emit('registration rejected', 'Draft already started.');
+        const disconnectedSMInfo = draftState.disconnectedSMs.get(UserID);
+       
+       if (!disconnectedSMInfo) {
+         socket.emit('registration rejected', 'Draft already started and you were not part of it.');
+         return;
+       }
+       
+       const smData = allSMs[UserID];
+       if (!smData) {
+         socket.emit('registration rejected', 'SM not found.');
+         return;
+       }
+ 
+       // This SM was previously in the draft, allow them to rejoin
+       const newDrafter = { 
+         id: socket.id, 
+         userId: UserID, 
+         name: smData.Name, 
+         originalIndex: disconnectedSMInfo.originalIndex 
+       };
+       
+       // Replace the placeholder for this SM with the new connection
+       const rejoinIndex = draftState.drafters.findIndex(drafter => drafter.userId === UserID);
+       
+       if (rejoinIndex !== -1) {
+         // If there was a placeholder, replace it
+         draftState.drafters[rejoinIndex] = newDrafter;
+       } else {
+         // If somehow there was no placeholder, add them back at their original position
+         draftState.drafters.splice(disconnectedSMInfo.originalIndex, 0, newDrafter);
+       }
+       
+       // Remove from disconnected list
+          draftState.disconnectedSMs.delete(UserID);
+       
+       socket.emit('registration confirmed', newDrafter);
+       socket.emit('assigned projects', smProjectsMap[UserID] || {});
+       socket.emit('all consultants', allConsultants);
+       socket.emit('draft rejoined');
+       io.emit('lobby update', draftState.drafters);
+       
+       // Send the current state of the draft to the rejoining SM
+       emitDraftStatus(io);
+       
+       // Check if this SM was disconnected during their turn
+       if (draftState.turnOwnerUserIdAtDisconnect === UserID) {
+         // Restore their turn
+         draftState.currentPrivilegedUserIndex = rejoinIndex !== -1 ? rejoinIndex : disconnectedSMInfo.originalIndex;
+         draftState.turnOwnerUserIdAtDisconnect = null;
+         updatePrivileges(io);
+       } else {
+         // Just update privileges normally
+         updatePrivileges(io);
+       }
         return;
       }
 
       // Prevent duplicate registration for the same socket
-      if (draftState.drafters.find((u) => u.id === socket.id)) return;
+      if (draftState.drafters.find((u) => u.userId === UserID)) {
+        socket.emit('registration rejected', 'This SM ID is already in use by another user.');
+        return;
+      }
 
       // Validate the SM's UserID
       const smData = allSMs[UserID];
@@ -62,6 +118,17 @@ function registerSocketHandlers(io) {
         // Shuffle the drafters to randomize the order
         const shuffled = shuffleArray([...draftState.drafters]);
         draftState.drafters.splice(0, draftState.drafters.length, ...shuffled);
+
+        // Store the original draft order for rejoining SMs
+        draftState.originalDraftOrder = draftState.drafters.map((drafter, index) => ({
+          userId: drafter.userId,
+          originalIndex: index
+        }));
+      
+      // Add the originalIndex to each drafter
+      draftState.drafters.forEach((drafter, index) => {
+        drafter.originalIndex = index;
+      });
 
         // Initialize draft state
         draftState.isDraftStarted = true;
@@ -122,25 +189,82 @@ function registerSocketHandlers(io) {
       rotatePrivileges(io);
     });
 
+    socket.on('leave lobby', () => {
+      if (!draftState.isDraftStarted) {
+        // Normal lobby leave if draft hasn't started
+        const index = draftState.drafters.findIndex((u) => u.id === socket.id);
+        if (index !== -1) {
+          const removed = draftState.drafters.splice(index, 1)[0];
+          io.emit('system message', `${removed.name} left the lobby.`);
+          io.emit('lobby update', draftState.drafters);
+        }
+      } else {
+        // If draft has started, keep their place but mark as disconnected
+        const index = draftState.drafters.findIndex((u) => u.id === socket.id);
+        if (index !== -1) {
+          const drafter = draftState.drafters[index];
+          
+          // Store their information for possible reconnection
+          draftState.disconnectedSMs.set(drafter.userId, {
+            originalIndex: drafter.originalIndex,
+            name: drafter.name
+          });
+          
+          // Keep them in the drafters array but mark their socket as disconnected
+          // This preserves the draft order
+          drafter.isDisconnected = true;
+          drafter.id = null; // Clear the socket ID
+          
+          io.emit('system message', `${drafter.name} left the draft but can rejoin later.`);
+          io.emit('lobby update', draftState.drafters.filter(d => !d.isDisconnected));
+          
+          // If it was their turn, remember it, but still skip to next active player for now
+          if (index === draftState.currentPrivilegedUserIndex) {
+            draftState.turnOwnerUserIdAtDisconnect = drafter.userId;
+            
+            // Find the next active player temporarily
+            // findNextActivePlayer();
+          }
+        }
+      }
+    });
+
     /**
      * Event: 'disconnect'
      * Handles a client disconnecting from the server.
      */
     socket.on('disconnect', () => {
-      // Remove the disconnected user from the drafters list
       const index = draftState.drafters.findIndex((u) => u.id === socket.id);
       if (index !== -1) {
-        const removed = draftState.drafters.splice(index, 1)[0];
-
-        // Adjust the privileged user index if necessary
-        if (draftState.isDraftStarted && index <= draftState.currentPrivilegedUserIndex) {
-          draftState.currentPrivilegedUserIndex = Math.max(0, draftState.currentPrivilegedUserIndex - 1);
-          updatePrivileges(io);
+        const drafter = draftState.drafters[index];
+        
+        if (draftState.isDraftStarted) {
+          // Similar to leave lobby, but due to disconnection
+          draftState.disconnectedSMs.set(drafter.userId, {
+            originalIndex: drafter.originalIndex,
+            name: drafter.name
+          });
+          
+          // Keep them in the drafters array but mark as disconnected
+          drafter.isDisconnected = true;
+          drafter.id = null;
+          
+          io.emit('system message', `${drafter.name} disconnected but can rejoin later.`);
+          io.emit('lobby update', draftState.drafters.filter(d => !d.isDisconnected));
+          
+          // If it was their turn, remember it, but still skip to next active player for now
+          if (index === draftState.currentPrivilegedUserIndex) {
+            draftState.turnOwnerUserIdAtDisconnect = drafter.userId;
+            
+            // Find the next active player temporarily
+            // findNextActivePlayer();
+          }
+        } else {
+          // Pre-draft regular disconnect
+          draftState.drafters.splice(index, 1);
+          io.emit('system message', `${drafter.name} disconnected.`);
+          io.emit('lobby update', draftState.drafters);
         }
-
-        // Notify all clients of the disconnection
-        io.emit('system message', `${removed.name} disconnected.`);
-        io.emit('lobby update', draftState.drafters);
       }
     });
   });
@@ -194,8 +318,11 @@ function rotatePrivileges(io) {
 function updatePrivileges(io) {
   if (draftState.drafters.length > 0 && draftState.isDraftStarted) {
     const currentUser = draftState.drafters[draftState.currentPrivilegedUserIndex];
-    io.emit('system message', `${currentUser.name} now has chat privileges.`);
-    io.emit('privilege update', currentUser);
+    // Only send privilege updates if the user is active
+    if (currentUser && !currentUser.isDisconnected && currentUser.id) {
+      io.emit('system message', `${currentUser.name} now has chat privileges.`);
+      io.emit('privilege update', currentUser);
+    }
   }
 }
 
