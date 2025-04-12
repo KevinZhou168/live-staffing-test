@@ -34,21 +34,66 @@ let allConsultants = {
     Availability_Tue: 'Morning',
     ConsultantScore: 4.3,
     FunctionalAreaInterests: 'FinTech'
+  },
+  c3: {
+    UserID: 'c3',
+    Name: 'Sarah Johnson',
+    Email: 'sarah@example.com',
+    Major: 'Data Science',
+    Year: 4,
+    Availability_Mon: 'Afternoon',
+    Availability_Tue: 'Evening',
+    ConsultantScore: 4.8,
+    FunctionalAreaInterests: 'Big Data'
+  },
+  c4: {
+    UserID: 'c4',
+    Name: 'Michael Chen',
+    Email: 'michael@example.com',
+    Major: 'MIS',
+    Year: 2,
+    Availability_Mon: 'Morning',
+    Availability_Tue: 'Morning',
+    ConsultantScore: 4.1,
+    FunctionalAreaInterests: 'Cybersecurity'
+  },
+  c5: {
+    UserID: 'c5',
+    Name: 'Olivia Garcia',
+    Email: 'olivia@example.com',
+    Major: 'CE',
+    Year: 3,
+    Availability_Mon: 'Evening',
+    Availability_Tue: 'Afternoon',
+    ConsultantScore: 4.5,
+    FunctionalAreaInterests: 'Web Development'
   }
 };
 
 let allSMs = {
   sm1: { UserID: 'sm1', Name: 'Alice Johnson', Email: 'alice@smail.com', Major: 'Business', Year: 4 },
-  sm2: { UserID: 'sm2', Name: 'Bob Martinez', Email: 'bob@smail.com', Major: 'Finance', Year: 3 }
+  sm2: { UserID: 'sm2', Name: 'Bob Martinez', Email: 'bob@smail.com', Major: 'Finance', Year: 3 },
+  sm3: { UserID: 'sm3', Name: 'Carlos Rodriguez', Email: 'carlos@smail.com', Major: 'Marketing', Year: 2 },
+  sm4: { UserID: 'sm4', Name: 'Diana Lee', Email: 'diana@smail.com', Major: 'Accounting', Year: 4 },
+  sm5: { UserID: 'sm5', Name: 'Eric Taylor', Email: 'eric@smail.com', Major: 'Economics', Year: 3 }
 };
 
 let smProjectsMap = {
   sm1: {
-    project1: { PM: 'pm1', SC: ['sc1'], NC: [] },
-    project2: { PM: 'pm2', SC: ['sc2'], NC: [] }
+    project1: { PM: 'pm1', SC: ['sc1'], NC: [], Description: 'AI Research Project' },
+    project2: { PM: 'pm2', SC: ['sc2'], NC: [], Description: 'Blockchain Development' }
   },
   sm2: {
-    project3: { PM: 'pm3', SC: ['sc3'], NC: [] }
+    project3: { PM: 'pm3', SC: ['sc3'], NC: [], Description: 'Marketing Analytics' }
+  },
+  sm3: {
+    project4: { PM: 'pm4', SC: [], NC: [], Description: 'Cybersecurity Initiative' }
+  },
+  sm4: {
+    project5: { PM: 'pm5', SC: [], NC: [], Description: 'E-commerce Optimization' }
+  },
+  sm5: {
+    project6: { PM: 'pm6', SC: [], NC: [], Description: 'Financial Modeling' }
   }
 };
 
