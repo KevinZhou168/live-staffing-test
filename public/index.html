@@ -1,314 +1,78 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- Meta tag for responsive design -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Page title -->
   <title>Staffing Draft</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      margin: 0;
-      background-color: #f9f9f9;
-      color: #333;
-    }
-
-    h2, h3 {
-      margin-top: 1.5rem;
-      color: #222;
-    }
-
-    #login-modal, #lobby, #draft-interface {
-      display: none;
-      padding: 2rem;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-
-    #login-modal {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-    }
-
-    #login-modal input, button {
-      padding: 10px;
-      font-size: 1rem;
-      margin: 10px 0;
-      width: 100%;
-      max-width: 300px;
-      box-sizing: border-box;
-    }
-
-    #login-btn, #start-draft, #pick-btn {
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    #login-btn:hover, #start-draft:hover, #pick-btn:hover {
-      background-color: #45a049;
-    }
-
-    #pick-btn:disabled {
-      background-color: #ccc !important;
-      cursor: not-allowed;
-    }
-
-    ul {
-      list-style-type: none;
-      padding-left: 0;
-    }
-
-    li {
-      padding: 8px 12px;
-      border-bottom: 1px solid #eee;
-      background-color: white;
-      margin-bottom: 4px;
-      border-radius: 4px;
-      transition: background 0.2s;
-    }
-
-    li:hover {
-      background-color: #f1f1f1;
-      cursor: pointer;
-    }
-
-    .disabled {
-      color: #999;
-      background-color: #eee !important;
-      text-decoration: line-through;
-      pointer-events: none;
-    }
-
-    .highlight {
-      background-color: #d1e7dd !important;
-      font-weight: bold;
-    }
-
-    select {
-      padding: 10px;
-      margin-top: 10px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      font-size: 1rem;
-    }
-
-    button:disabled {
-      background-color: #ccc;
-      cursor: not-allowed;
-    }
-
-    #status {
-      background-color: #e1e1e1;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 20px;
-      text-align: center;
-      font-weight: bold;
-    }
-
-    #consultants {
-      max-height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0;
-      background: #fff;
-    }
-
-    #project-list {
-      background-color: #fff;
-      padding: 10px;
-      border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-
-    .section {
-      margin-bottom: 2rem;
-    }
-  </style>
+  
+  <!-- Link to the external CSS file -->
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <!-- Login Modal -->
   <div id="login-modal">
+    <!-- Title for the login modal -->
     <h2>Enter Your SM UserID</h2>
+    
+    <!-- Input for the user ID -->
     <input id="userid-input" placeholder="e.g., sm1" />
+    
+    <!-- Input for the passcode -->
     <input id="passcode-input" placeholder="Enter Join Code" />
+    
+    <!-- Button to submit login details -->
     <button id="login-btn">Enter</button>
   </div>
 
-  <!-- Lobby -->
+  <!-- Lobby Section -->
   <div id="lobby">
+    <!-- Title for the lobby -->
     <h2>Lobby</h2>
+    
+    <!-- Message displayed while waiting for other users -->
     <p>Waiting for other SMs to join...</p>
+    
+    <!-- List of users in the lobby -->
     <ul id="user-list"></ul>
+    
+    <!-- Button to start the draft -->
     <button id="start-draft">Start Draft</button>
   </div>
 
   <!-- Draft Interface -->
   <div id="draft-interface">
+    <!-- Status message for the draft -->
     <h2 id="status">Waiting...</h2>
 
+    <!-- Section for displaying the user's projects -->
     <div class="section">
       <h3>Your Projects</h3>
       <div id="project-list"></div>
     </div>
 
+    <!-- Section for displaying available consultants -->
     <div class="section">
       <h3>Available Consultants</h3>
       <ul id="consultants"></ul>
     </div>
 
+    <!-- Section for selecting a project and picking a consultant -->
     <div class="section">
+      <!-- Dropdown for selecting a project -->
       <label for="project-select">Select Project:</label><br />
       <select id="project-select"></select><br />
+      
+      <!-- Button to pick a consultant (disabled by default) -->
       <button id="pick-btn" disabled>Pick Selected Consultant</button>
     </div>
   </div>
 
+  <!-- Include the Socket.IO library -->
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-    let currentUser = null;
-    let assignedProjects = {};
-    let allConsultants = {};
-    let drafted = new Set();
-    let currentConsultantId = null;
-    let hasPrivilege = false;
-
-    const loginModal = document.getElementById('login-modal');
-    const useridInput = document.getElementById('userid-input');
-    const passcodeInput = document.getElementById('passcode-input');
-    const loginBtn = document.getElementById('login-btn');
-    const lobby = document.getElementById('lobby');
-    const userList = document.getElementById('user-list');
-    const startBtn = document.getElementById('start-draft');
-    const draftInterface = document.getElementById('draft-interface');
-    const status = document.getElementById('status');
-    const projectList = document.getElementById('project-list');
-    const consultantList = document.getElementById('consultants');
-    const projectSelect = document.getElementById('project-select');
-    const pickBtn = document.getElementById('pick-btn');
-
-    loginModal.style.display = 'flex';
-
-    loginBtn.onclick = () => {
-      const id = useridInput.value.trim();
-      const code = passcodeInput.value.trim();
-      if (id && code) {
-        socket.emit('register sm', { UserID: id, joinCode: code });
-      }
-    };
-
-    socket.on('registration confirmed', (user) => {
-      currentUser = user;
-      loginModal.style.display = 'none';
-      lobby.style.display = 'block';
-    });
-
-    socket.on('lobby update', (users) => {
-      userList.innerHTML = '';
-      users.forEach(u => {
-        const li = document.createElement('li');
-        li.textContent = u.name + (u.id === currentUser.id ? ' (You)' : '');
-        userList.appendChild(li);
-      });
-    });
-
-    startBtn.onclick = () => socket.emit('start draft');
-
-    socket.on('draft started', () => {
-      lobby.style.display = 'none';
-      draftInterface.style.display = 'block';
-    });
-
-    socket.on('assigned projects', (projects) => {
-      assignedProjects = projects;
-      renderProjects();
-    });
-
-    socket.on('all consultants', (consultants) => {
-      allConsultants = consultants;
-      renderConsultants();
-    });
-
-    socket.on('draft status update', (smProjectsMap) => {
-      drafted.clear();
-      assignedProjects = smProjectsMap[currentUser.userId] || {};
-      Object.values(smProjectsMap).forEach(projects => {
-        Object.values(projects).forEach(p => {
-          p.NC.forEach(nc => drafted.add(nc.UserID));
-        });
-      });
-      renderProjects();
-      renderConsultants();
-    });
-
-    socket.on('privilege update', (user) => {
-      hasPrivilege = user.id === currentUser.id;
-      status.textContent = hasPrivilege ? '✅ Your Turn to Pick' : `🕒 ${user.name}'s Turn`;
-      pickBtn.disabled = !hasPrivilege;
-      renderConsultants();
-    });
-
-    function renderProjects() {
-      projectList.innerHTML = '';
-      projectSelect.innerHTML = '';
-      for (const [projectId, data] of Object.entries(assignedProjects)) {
-        const div = document.createElement('div');
-        const ncList = (data.NC || []).map(nc => nc.Name).join(', ') || 'None';
-        div.innerHTML = `
-          <strong>${projectId}</strong><br>
-          PM: ${data.PM}<br>
-          SCs: ${data.SC.join(', ')}<br>
-          <strong>NCs:</strong> ${ncList}<br><br>
-        `;
-        projectList.appendChild(div);
-
-        const opt = document.createElement('option');
-        opt.value = projectId;
-        opt.textContent = projectId;
-        projectSelect.appendChild(opt);
-      }
-    }
-
-    function renderConsultants() {
-      consultantList.innerHTML = '';
-      Object.values(allConsultants).forEach(c => {
-        const li = document.createElement('li');
-        li.textContent = `${c.Name} (${c.UserID}) - ${c.Major}, Year ${c.Year}`;
-        if (drafted.has(c.UserID)) {
-          li.classList.add('disabled');
-        } else if (hasPrivilege) {
-          li.classList.remove('disabled');
-          li.onclick = () => {
-            currentConsultantId = c.UserID;
-            document.querySelectorAll('#consultants li').forEach(el => el.classList.remove('highlight'));
-            li.classList.add('highlight');
-          };
-        } else {
-          li.classList.remove('highlight');
-          li.onclick = null;
-        }
-        consultantList.appendChild(li);
-      });
-    }
-
-    pickBtn.onclick = () => {
-      if (currentConsultantId) {
-        const projectId = projectSelect.value;
-        const consultant = Object.values(allConsultants).find(c => c.UserID === currentConsultantId);
-        if (!consultant) return;
-        const confirmMsg = `Are you sure you want to select ${consultant.Name} for ${projectId}?`;
-        if (confirm(confirmMsg)) {
-          socket.emit('pick consultant', { consultantId: currentConsultantId, projectId });
-          currentConsultantId = null;
-        }
-      }
-    };
-  </script>
+  
+  <!-- Include the main JavaScript file for the app -->
+  <script src="/js/app.js"></script>
 </body>
 </html>
