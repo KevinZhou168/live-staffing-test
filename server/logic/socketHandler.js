@@ -3,6 +3,7 @@ const draftState = require('./draftState'); // Manages the state of the draft
 const allConsultants = require('../data/consultants'); // List of all consultants
 const allSMs = require('../data/smData'); // List of all SMs (Scrum Masters)
 const smProjectsMap = require('../data/projects'); // Mapping of SMs to their projects
+const { postToGoogleSheet } = require('./staffingHistoryHandler'); // Function to post data to Google Sheets
 const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle arrays
 
 /**
@@ -182,6 +183,21 @@ function registerSocketHandlers(io) {
       // Assign the consultant to the project
       userProjects[projectId].NC.push(consultant);
       draftState.draftedConsultants.set(consultantId, consultant);
+
+      // Post the selection to Google Sheets
+      const timestamp = new Date().toLocaleString();
+      const data = {
+        timestamp: timestamp,
+        smId: currentSM.userId,
+        smName: currentSM.name,
+        consultantId: consultant.UserID,
+        consultantName: consultant.Name,
+        consultantRole: consultant.Role,
+        projectId: projectId,
+        projectName: projectId,
+        message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${projectId} at ${timestamp}`
+      }
+      postToGoogleSheet(data);
 
       // Notify all clients of the selection
       io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
