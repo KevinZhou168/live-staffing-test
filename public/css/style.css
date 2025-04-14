@@ -11,15 +11,17 @@ h3 {
     color: #222;
 }
 
-#leave-lobby, #leave-draft {
+#leave-lobby,
+#leave-draft {
     background-color: #dc3545;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-  }
+}
 
-#leave-lobby:hover, #leave-draft:hover {
+#leave-lobby:hover,
+#leave-draft:hover {
     background-color: #c82333;
 }
 
@@ -142,4 +144,11 @@ button:disabled {
 
 .section {
     margin-bottom: 2rem;
+}
+
+.error-message {
+    color: red;
+    font-size: 0.8rem;
+    margin-top: 4px;
+    display: block;
 }

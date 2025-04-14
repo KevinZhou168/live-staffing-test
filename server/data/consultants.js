@@ -60,6 +60,5 @@ const allConsultants = {
     FunctionalAreaInterests: 'Web Development'
   }
 };
-  
+
 module.exports = allConsultants;
-  
