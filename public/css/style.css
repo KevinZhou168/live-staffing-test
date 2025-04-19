@@ -54,7 +54,8 @@ button {
 
 #login-btn,
 #start-draft,
-#pick-btn {
+#pick-btn,
+#defer-btn {
     background-color: #4CAF50;
     color: white;
     border: none;
@@ -64,11 +65,13 @@ button {
 
 #login-btn:hover,
 #start-draft:hover,
-#pick-btn:hover {
+#pick-btn:hover,
+#defer-btn:hover {
     background-color: #45a049;
 }
 
-#pick-btn:disabled {
+#pick-btn:disabled,
+#defer-btn:disabled {
     background-color: #ccc !important;
     cursor: not-allowed;
 }

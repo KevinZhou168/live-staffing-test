@@ -205,6 +205,40 @@ function registerSocketHandlers(io) {
       rotatePrivileges(io);
     });
 
+    /**
+     * Event: 'defer turn'
+     * Handles a user skipping their turn in the draft.
+     */
+    socket.on('defer turn', () => {
+      // Ensure the draft has started
+      if (!draftState.isDraftStarted) return;
+
+      // Validate that it's the current user's turn
+      const currentSM = draftState.drafters[draftState.currentPrivilegedUserIndex];
+      if (socket.id !== currentSM.id) {
+        socket.emit('system message', 'Not your turn.');
+        return;
+      }
+
+      // Log this action
+      const timestamp = new Date().toLocaleString();
+      io.emit('system message', `${currentSM.name} deferred their turn at ${timestamp}`);
+      
+      // Check if the player would get consecutive turns (at first or last position)
+      const isAtFirst = draftState.currentPrivilegedUserIndex === 0;
+      const isAtLast = draftState.currentPrivilegedUserIndex === draftState.drafters.length - 1;
+      
+      // If they're in a position to get consecutive turns and not in their second turn yet
+      if ((isAtLast || (isAtFirst && !draftState.isInitialTurn)) && !draftState.isSecondTurn) {
+        // Skip both turns by calling rotatePrivileges twice
+        rotatePrivileges(io);  // This will set isSecondTurn = true
+        rotatePrivileges(io);  // This will move to the next player
+      } else {
+        // Regular turn deferral - just move to the next player
+        rotatePrivileges(io);
+      }
+    });
+
     socket.on('leave lobby', () => {
       if (!draftState.isDraftStarted) {
         // Normal lobby leave if draft hasn't started
