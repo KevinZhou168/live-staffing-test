@@ -200,6 +200,7 @@ function registerSocketHandlers(io) {
       // Post the selection to Google Sheets
       const timestamp = new Date().toLocaleString();
       const data = {
+        type: 'staffingHistory',
         timestamp: timestamp,
         smId: currentSM.userId,
         smName: currentSM.name,
@@ -211,6 +212,7 @@ function registerSocketHandlers(io) {
         message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${projectId} at ${timestamp}`
       };
       postToGoogleSheet(data);
+      postToGoogleSheet(smProjectsMap);
 
       // Notify all clients of the selection
       io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
