@@ -1,4 +1,4 @@
-const url = "https://script.google.com/macros/s/AKfycbwOPT_uLkCwkhcEztPbTLP6ympZlpnFkV5bxHTIaErMKGUkLcu8ar1bdJkMvH72gVudNQ/exec";
+const url = "https://script.google.com/macros/s/AKfycbzxLwbh_CyCpwRd2mGDPHyuQV7rkW2T2Lgd00NDtxwkZBwtgBe2PMcgQ0-IG9mFkPb1hg/exec";
 
 async function postToGoogleSheet(data) {
     try {
