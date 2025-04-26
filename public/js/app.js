@@ -101,6 +101,22 @@ socket.on('registration rejected', (message) => {
     alert('Registration error: ' + message);
 });
 
+socket.on('endDraft', (message) => {
+    console.log('Received endDraft event from server:', message);
+    alert(message); 
+
+    pickBtn.disabled = true;
+    deferBtn.disabled = true;
+    startBtn.disabled = true; 
+
+     document.querySelectorAll('#consultants li').forEach(li => {
+        li.onclick = null; // Disable clicking consultants
+    });
+
+
+});
+
+
 // Handle the start of the draft
 socket.on('draft started', () => {
     lobby.style.display = 'none'; // Hide the lobby

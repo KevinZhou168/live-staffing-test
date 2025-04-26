@@ -6,6 +6,8 @@ const smProjectsMap = require('../data/projects'); // Mapping of SMs to their pr
 const { postToGoogleSheet } = require('./staffingHistoryHandler'); // Function to post data to Google Sheets
 const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle arrays
 
+let selectedConsultants = Object.keys(allConsultants).length;
+console.log(selectedConsultants);
 /**
  * Registers all socket event handlers for the application.
  *
@@ -16,9 +18,17 @@ function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
     /**
      * Event: 'register sm'
-     * Handles the registration of a Scrum Master (SM).
+     * Handles the registration of a SM
      */
     socket.on('register sm', ({ UserID, joinCode }) => {
+
+      //Validate sm
+      if(!validateSM(UserID)){
+        console.log("SM ID is not correct")
+        socket.emit('registration rejected', 'Invalid SM ID.');
+        return;
+      }
+      
       // Validate the join code
       if (joinCode !== 'sp2025') {
         socket.emit('registration rejected', 'Invalid join code.');
@@ -153,6 +163,9 @@ function registerSocketHandlers(io) {
       // Ensure the draft has started
       if (!draftState.isDraftStarted) return;
 
+      //picked count
+      selectedConsultants -= 1;
+
       // Validate that it's the current user's turn
       const currentSM = draftState.drafters[draftState.currentPrivilegedUserIndex];
       if (socket.id !== currentSM.id) {
@@ -201,6 +214,18 @@ function registerSocketHandlers(io) {
 
       // Notify all clients of the selection
       io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
+      
+
+      console.log(selectedConsultants)
+      if (selectedConsultants == 0) {
+        console.log('draft ended')
+        emitDraftStatus(io)
+        io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
+        draftState.isDraftStarted = false; // Optionally, mark the draft as ended
+        
+        return; 
+      }
+
       emitDraftStatus(io);
       rotatePrivileges(io);
     });
@@ -318,6 +343,40 @@ function registerSocketHandlers(io) {
       }
     });
   });
+}
+
+function validateSM(smid){
+
+// async function validateSM(smid){
+
+  // to do when we can connect to cloud datatbase
+  // try {
+  //   const response = await fetch("/api/login-validation", {
+  //     method: "POST",
+  //     headers: {
+  //       "Content-Type": "application/json"
+  //     },
+  //     body: JSON.stringify({ sm_id, project_semester })
+  //   });
+
+  //   const data = await response.json();
+  //   if (response.ok) {
+  //     console.log("Login Validated:", data);
+  //     return True
+  //   } else {
+  //     console.error("Login invalid", data.error);
+  //     return False
+  //   }
+  // } catch (err) {
+  //   console.error("Request failed:", err);
+  //   return False
+  // }
+
+  if(smid == 'sm1' || smid == 'sm2' || smid == 'sm3' || smid == 'sm4' || smid == 'sm5'){
+    return true
+  }
+
+  return false
 }
 
 /**
