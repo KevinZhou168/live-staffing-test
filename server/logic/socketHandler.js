@@ -1,13 +1,12 @@
 // Import required modules and data
 const draftState = require('./draftState'); // Manages the state of the draft
-const allConsultants = require('../data/consultants'); // List of all consultants
-const allSMs = require('../data/smData'); // List of all SMs (Scrum Masters)
+const {allConsultants,pickedConsultants} = require('../data/consultants'); // List of all consultants
+const allSMs = require('../data/smData'); // List of all SMs
 const smProjectsMap = require('../data/projects'); // Mapping of SMs to their projects
 const { postToGoogleSheet } = require('./staffingHistoryHandler'); // Function to post data to Google Sheets
 const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle arrays
 
 let selectedConsultants = Object.keys(allConsultants).length;
-console.log(selectedConsultants);
 /**
  * Registers all socket event handlers for the application.
  *
@@ -194,8 +193,11 @@ function registerSocketHandlers(io) {
       }
 
       // Assign the consultant to the project
-      userProjects[projectId].NC.push(consultant);
+      userProjects[projectId][consultant.Role].push(consultant);
       draftState.draftedConsultants.set(consultantId, consultant);
+
+      //keep track of picked consultants
+      pickedConsultants.push(consultant)
 
       // Post the selection to Google Sheets
       const timestamp = new Date().toLocaleString();
@@ -305,6 +307,25 @@ function registerSocketHandlers(io) {
         }
       }
     });
+
+    socket.on('end draft', () => {
+      const remainingConsultants = Object.values(allConsultants).filter(
+        (consultant) => !pickedConsultants.some(
+          (picked) => picked.UserID === consultant.UserID
+        )
+      );
+      
+      const data = {"remainingConsultants" : remainingConsultants}
+      postToGoogleSheet(data)
+
+      console.log("data being passed is", data);
+      
+      emitDraftStatus(io)
+      io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
+
+
+      // draftState.isDraftStarted = false;
+    })
 
     /**
      * Event: 'disconnect'

@@ -61,4 +61,10 @@ const allConsultants = {
   }
 };
 
-module.exports = allConsultants;
+
+// List of all ids of consultants picked
+const pickedConsultants = [];
+
+
+
+module.exports = {allConsultants, pickedConsultants};

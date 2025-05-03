@@ -26,6 +26,7 @@ const pickBtn = document.getElementById('pick-btn');
 const deferBtn = document.getElementById('defer-btn'); // Add reference to defer button
 const leaveLobbyBtn = document.getElementById('leave-lobby');
 const leaveDraftBtn = document.getElementById('leave-draft');
+const endDraftBtn = document.getElementById("end-draft")
 
 // Show the login modal when the app starts
 loginModal.style.display = 'flex';
@@ -119,8 +120,12 @@ socket.on('endDraft', (message) => {
 
 // Handle the start of the draft
 socket.on('draft started', () => {
-    lobby.style.display = 'none'; // Hide the lobby
-    draftInterface.style.display = 'block'; // Show the draft interface
+    // Only show the draft interface if the user is already logged in
+    if (currentUser) {
+        lobby.style.display = 'none'; // Hide the lobby
+        draftInterface.style.display = 'block'; // Show the draft interface
+    }
+    // If not logged in, do nothing - stay on login page
 });
 
 // Add handler for draft rejoined event
@@ -150,6 +155,9 @@ socket.on('draft status update', (smProjectsMap) => {
             p.NC.forEach(nc => {
                 drafted.add(nc.UserID); // Add drafted consultants to the set
             });
+            p.EC.forEach(ec => {
+                drafted.add(ec.UserID); // Add drafted consultants to the set
+            });
         });
     });
     renderProjects(); // Re-render the projects
@@ -173,11 +181,13 @@ function renderProjects() {
     for (const [projectId, data] of Object.entries(assignedProjects)) {
         const div = document.createElement('div');
         const ncList = (data.NC || []).map(nc => nc.Name).join(', ') || 'None'; // List of NCs for the project
+        const ecList = (data.EC || []).map(ec => ec.Name).join(', ') || 'None';
         div.innerHTML = `
             <strong>${projectId}</strong><br>
             PM: ${data.PM}<br>
             SCs: ${data.SC.join(', ')}<br>
             <strong>NCs:</strong> ${ncList}<br><br>
+            <strong>ECs:</strong> ${ecList}<br><br>
         `;
         projectList.appendChild(div); // Add the project to the list
 
@@ -254,4 +264,11 @@ leaveDraftBtn.onclick = () => {
         draftInterface.style.display = 'none';
         loginModal.style.display = 'flex';
     }
+};
+
+endDraftBtn.onclick = () => {
+    if (confirm('Are you sure you want to end the draft?')) {
+        socket.emit('end draft');
+    }
+
 };
