@@ -1,6 +1,13 @@
 // Initialize the Socket.IO client
 const socket = io();
 
+// Add a state tracking object
+const dataState = {
+    projects: false,
+    pm: false,
+    sc: false
+};
+
 // Variables to store the current user's data and draft state
 let currentUser = null;
 let assignedProjects = {}; // Projects assigned to the current user
@@ -11,6 +18,12 @@ let drafted = new Set(); // Set of consultants already drafted
 let currentConsultantId = null; // ID of the currently selected consultant
 let hasPrivilege = false; // Whether the current user has the privilege to pick
 let currentSemester = null;
+// Initialize active filters for the consultant list
+let activeFilters = {
+    major: '',
+    years: new Set(['Freshman', 'Sophomore', 'Junior', 'Senior']),
+    roles: new Set(['NC', 'EC'])
+};
 
 // DOM elements for various parts of the UI
 const loginModal = document.getElementById('login-modal');
@@ -154,17 +167,28 @@ socket.on('draft rejoined', () => {
 // Receive the pm data
 socket.on('all pm', (allPM) => {
     pmList = allPM; // Update the assigned projects
+    dataState.pm = true;
+    if (dataState.projects && dataState.sc) {
+        renderProjects();
+    }
 });
 
 // Receive the sc data
 socket.on('all sc', (allSC) => {
     scList = allSC; // Update the assigned projects
+    dataState.sc = true;
+    if (dataState.projects && dataState.pm) {
+        renderProjects();
+    }
 });
 
 // Receive the projects assigned to the current user
 socket.on('assigned projects', (projects) => {
     assignedProjects = projects; // Update the assigned projects
-    renderProjects(); // Render the projects in the UI
+    dataState.projects = true;
+    if (dataState.pm && dataState.sc) {
+        renderProjects();
+    }
 });
 
 // Receive the list of all consultants
@@ -208,12 +232,14 @@ function renderProjects() {
 
     for (const [projectId, data] of Object.entries(assignedProjects)) {
         const div = document.createElement('div');
+        // Add null checks and default values
+        const pmName = data.PM && pmList[data.PM] ? pmList[data.PM].Name : 'Unassigned';
         const ncList = (data.NC || []).map(nc => nc.Name).join(', ') || 'None'; // List of NCs for the project
         const ecList = (data.EC || []).map(ec => ec.Name).join(', ') || 'None';
-        const scNames = (data.SC || []).map(scId => scList[scId]?.Name || '(Unknown)').join(', ');
+        const scNames = (data.SC || []).map(scId => scList[scId]?.Name || '(Unknown)').filter(Boolean).join(', ') || 'None'; // List of SCs for the project
         div.innerHTML = `
             <strong>${assignedProjects[projectId]['Description']} (${projectId})</strong><br>
-            PM: ${pmList[data.PM]['Name']}<br>
+            PM: ${pmName}<br>
             SCs: ${scNames}<br>
             NCs: ${ncList}<br>
             ECs: ${ecList}<br><br>
@@ -226,33 +252,6 @@ function renderProjects() {
         projectSelect.appendChild(opt); // Add the project to the dropdown
     }
 }
-
-// Render the list of consultants in the UI
-// function renderConsultants() {
-//     consultantList.innerHTML = ''; // Clear the current consultant list
-
-//     Object.values(allConsultants).forEach(c => {
-//         const li = document.createElement('li');
-//         li.textContent = `${c.Name} (${c.UserID}) - ${c.UserID}, ${c.Email}, ${c.Role}, ${c.Major}, ${c.Year}, ${c.Num_SemestersInIBC}, ${c.ConsultantScore}, ${c.TimeZone}, ${c.Availability_Mon}, ${c.Availability_Tue}, ${c.Availability_Wed}, ${c.Availability_Thu}, ${c.Availability_Fri}, ${c.Availability_Sat}, ${c.Availability_Sun}, ${c.WillingToTravel}, ${c.WeekBeforeFinalsAvailability}, ${c.IndustryInterests}, ${c.FunctionalAreaInterests}`; // Consultant details
-
-//         if (drafted.has(c.UserID)) {
-//             li.classList.add('disabled'); // Mark the consultant as drafted
-//         } else if (hasPrivilege) {
-//             li.classList.remove('disabled');
-//             li.onclick = () => {
-//                 currentConsultantId = c.UserID; // Set the selected consultant ID
-//                 document.querySelectorAll('#consultants li').forEach(el => {
-//                     el.classList.remove('highlight'); // Remove highlight from other consultants
-//                 });
-//                 li.classList.add('highlight'); // Highlight the selected consultant
-//             };
-//         } else {
-//             li.classList.remove('highlight');
-//             li.onclick = null; // Disable click events for other users
-//         }
-//         consultantList.appendChild(li); // Add the consultant to the list
-//     });
-// }
 
 function createTimeGrid(consultant) {
     // Generate time labels (7am to 10pm in 30min intervals)
@@ -312,15 +311,89 @@ function createTimeGrid(consultant) {
     `;
 }
 
+// Modify the renderConsultants function to include filter UI and filtering logic
 function renderConsultants() {
-    consultantList.innerHTML = ''; // Clear the current consultant list
+    consultantList.innerHTML = ''; // Clear the current list
 
-    Object.values(allConsultants).forEach(c => {
+    // Create filter section
+    const filterSection = document.createElement('div');
+    filterSection.className = 'filter-section';
+    filterSection.innerHTML = `
+        <div class="filter-controls">
+            <div class="filter-group major-filter">
+                <div class="filter-title">Major</div>
+                <input type="text" 
+                    id="major-filter" 
+                    placeholder="Type and press Enter..." 
+                    value="${activeFilters.major}"
+                    class="filter-input">
+            </div>
+            <div class="filter-group year-filter">
+                <div class="filter-title">Year</div>
+                <div class="checkbox-grid" id="year-filters">
+                    <div class="checkbox-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="Freshman" ${activeFilters.years.has('Freshman') ? 'checked' : ''}>
+                            Freshman
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="Sophomore" ${activeFilters.years.has('Sophomore') ? 'checked' : ''}>
+                            Sophomore
+                        </label>
+                    </div>
+                    <div class="checkbox-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="Junior" ${activeFilters.years.has('Junior') ? 'checked' : ''}>
+                            Junior
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" value="Senior" ${activeFilters.years.has('Senior') ? 'checked' : ''}>
+                            Senior
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-group">
+                <div class="filter-title">Role</div>
+                <div class="checkbox-group" id="role-filters">
+                    <label class="checkbox-label">
+                        <input type="checkbox" value="NC" ${activeFilters.roles.has('NC') ? 'checked' : ''}>
+                        NC
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" value="EC" ${activeFilters.roles.has('EC') ? 'checked' : ''}>
+                        EC
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+
+    consultantList.appendChild(filterSection);
+
+    // Create container for consultant cards
+    const cardsContainer = document.createElement('div');
+    cardsContainer.className = 'consultant-cards';
+
+    // Filter and render consultants
+    Object.values(allConsultants)
+    .filter(consultant => {
+        const matchesMajor = !activeFilters.major || 
+            consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase());
+        const matchesYear = activeFilters.years.has(consultant.Year);
+        const matchesRole = activeFilters.roles.has(consultant.Role);
+        
+        return matchesMajor && matchesYear && matchesRole;
+    })
+    .forEach(c => {
         const card = document.createElement('div');
         card.className = 'consultant-mini-card';
         
         card.innerHTML = `
-            <div class="consultant-name">${c.Name} (${c.UserID}) - Role: ${c.Role} | Score: ${c.ConsultantScore}</div>
+            <div class="consultant-name">${c.Name} (${c.UserID})</div>
+            <div class="consultant-details">
+                ${c.Role} | ${c.Major} | ${c.Year} | Score: ${c.ConsultantScore}
+            </div>
         `;
 
         if (drafted.has(c.UserID)) {
@@ -337,10 +410,42 @@ function renderConsultants() {
             };
         } else {
             card.classList.remove('highlight');
-            card.onclick = null; // Disable click events for other users
+            card.onclick = null;
         }
         
-        consultantList.appendChild(card);
+        cardsContainer.appendChild(card);
+    });
+
+    consultantList.appendChild(cardsContainer);
+
+    // Add event listeners for filters
+    document.getElementById('major-filter').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            activeFilters.major = e.target.value;
+            renderConsultants();
+        }
+    });
+
+    document.getElementById('year-filters').addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            if (e.target.checked) {
+                activeFilters.years.add(e.target.value);
+            } else {
+                activeFilters.years.delete(e.target.value);
+            }
+            renderConsultants();
+        }
+    });
+
+    document.getElementById('role-filters').addEventListener('change', (e) => {
+        if (e.target.type === 'checkbox') {
+            if (e.target.checked) {
+                activeFilters.roles.add(e.target.value);
+            } else {
+                activeFilters.roles.delete(e.target.value);
+            }
+            renderConsultants();
+        }
     });
 }
 

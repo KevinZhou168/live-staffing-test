@@ -110,21 +110,6 @@ ul {
     padding-left: 0;
 }
 
-li {
-    padding: 10px 15px;
-    border-bottom: 1px solid #eee;
-    background-color: white;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    transition: background 0.2s;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-li:hover {
-    background-color: var(--uiuc-light-orange);
-    cursor: pointer;
-}
-
 .disabled {
     color: #999;
     background-color: #eee !important;
@@ -237,9 +222,9 @@ button:disabled {
 
 #consultant-sidebar {
     position: fixed;
-    right: -400px;
+    right: -500px;
     top: 0;
-    width: 400px;
+    width: 500px;
     height: 100%;
     background-color: var(--uiuc-white);
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
@@ -288,26 +273,6 @@ button:disabled {
     border-radius: 6px;
 }
 
-/* .availability-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 4px;
-    margin: 12px 0;
-}
-
-.availability-grid span {
-    text-align: center;
-    padding: 8px 4px;
-    background-color: var(--uiuc-gray);
-    border-radius: 4px;
-    font-size: 0.9em;
-} */
-
-/* .availability-grid span.available {
-    background-color: var(--uiuc-light-blue);
-    color: var(--uiuc-white);
-} */
-
 .select-consultant {
     background-color: var(--uiuc-orange);
     color: var(--uiuc-white);
@@ -323,7 +288,6 @@ button:disabled {
     background-color: #d43b1a;
 }
 
-/* Add this if you want the main content to shift when sidebar opens */
 .content-wrapper {
     transition: margin-right 0.3s ease;
 }
@@ -398,11 +362,6 @@ button:disabled {
     border-right: 1px solid var(--uiuc-gray);
 }
 
-/* Remove the separate grid line since we're using border-top */
-.time-grid-line {
-    display: none;
-}
-
 .time-slot {
     position: absolute;
     top: 1px;
@@ -439,4 +398,85 @@ button:disabled {
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
+}
+
+.filter-section {
+    padding: 15px;
+    background: var(--uiuc-white);
+    border-bottom: 1px solid var(--uiuc-gray);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.filter-controls {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 10px;
+    align-items: flex-start;
+    padding: 15px;
+}
+
+.filter-group {
+    flex: 0 1 auto;
+}
+
+.filter-group.major-filter {
+    width: 200px;
+    margin-right: 20px;
+}
+
+.filter-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--uiuc-gray);
+    border-radius: 4px;
+    font-size: 14px;
+}
+.checkbox-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.checkbox-row {
+    display: flex;
+    gap: 20px; /* Space between checkboxes in the same row */
+}
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+.filter-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: var(--uiuc-blue);
+    font-size: 14px;
+}
+
+.consultant-cards {
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.consultant-details {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 4px;
 }

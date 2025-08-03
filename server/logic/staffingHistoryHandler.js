@@ -1,28 +1,3 @@
-// const fetchWithRetry = async (url, options, retries = 3, timeout = 50000) => {
-//   for (let attempt = 1; attempt <= retries; attempt++) {
-//     try {
-//       const controller = new AbortController();
-//       const id = setTimeout(() => controller.abort(), timeout);
-//       const response = await fetch(url, { ...options, signal: controller.signal });
-//       clearTimeout(id);
-//       if (!response.ok) {
-//         throw new Error(`HTTP error! status: ${response.status}`);
-//       }
-//       const contentType = response.headers.get("content-type") || "";
-//       if (contentType.includes("application/json")) {
-//         return await response.json();
-//       } else {
-//         return await response.text(); // fallback for text/plain
-//       }
-//     } catch (error) {
-//       if (attempt === retries) {
-//         throw error;
-//       }
-//       console.warn(`Fetch attempt ${attempt} failed. Retrying...`, error);
-//     }
-//   }
-// };
-
 const fetchWithRetry = async (url, options, retries = 3, timeout = 50000) => {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
