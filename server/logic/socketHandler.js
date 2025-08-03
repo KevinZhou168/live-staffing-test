@@ -1,10 +1,20 @@
+require('dotenv').config();
+
 // Import required modules and data
 const draftState = require('./draftState'); // Manages the state of the draft
-const {allConsultants,pickedConsultants} = require('../data/consultants'); // List of all consultants
-const allSMs = require('../data/smData'); // List of all SMs
-const smProjectsMap = require('../data/projects'); // Mapping of SMs to their projects
+let allConsultants = {};
+let pickedConsultants = [];
+let allSMs = require('../data/smData'); // List of all SMs
+let allPM = require('../data/pmData');
+let allSC = require('../data/scData');
+let smProjectsMap = require('../data/projects'); // Mapping of SMs to their projects
 const { postToGoogleSheet } = require('./staffingHistoryHandler'); // Function to post data to Google Sheets
 const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle arrays
+
+const baseApiUrl = process.env.BASE_API_URL;
+
+const pgPool = require('../../db.js'); // Adjust path based on file location
+const { all } = require('axios');
 
 let selectedConsultants = Object.keys(allConsultants).length;
 /**
@@ -19,17 +29,13 @@ function registerSocketHandlers(io) {
      * Event: 'register sm'
      * Handles the registration of a SM
      */
-    socket.on('register sm', ({ UserID, joinCode }) => {
-
-      //Validate sm
-      if(!validateSM(UserID)){
-        console.log("SM ID is not correct")
-        socket.emit('registration rejected', 'Invalid SM ID.');
-        return;
-      }
+    socket.on('register sm', async ({ UserID, joinCode }) => {
+      console.log(`Registering SM: ${UserID}, Join Code: ${joinCode}`);
+      
+      // SM validation handled by the login-validation endpoint
       
       // Validate the join code
-      if (joinCode !== 'sp2025') {
+      if (joinCode !== process.env.JOIN_CODE) {
         socket.emit('registration rejected', 'Invalid join code.');
         return;
       }
@@ -43,17 +49,11 @@ function registerSocketHandlers(io) {
           return;
         }
 
-        const smData = allSMs[UserID];
-        if (!smData) {
-          socket.emit('registration rejected', 'SM not found.');
-          return;
-        }
-
         // This SM was previously in the draft, allow them to rejoin
         const newDrafter = {
           id: socket.id,
           userId: UserID,
-          name: smData.Name,
+          name: disconnectedSMInfo.name || UserID,
           originalIndex: disconnectedSMInfo.originalIndex
         };
 
@@ -72,8 +72,14 @@ function registerSocketHandlers(io) {
         draftState.disconnectedSMs.delete(UserID);
 
         socket.emit('registration confirmed', newDrafter);
+        
+        console.log('allConsultants keys:', Object.keys(allConsultants));
+        console.log('smProjectsMap for user:', smProjectsMap[UserID]);
+
         socket.emit('assigned projects', smProjectsMap[UserID] || {});
         socket.emit('all consultants', allConsultants);
+        socket.emit('all pm', allPM);
+        socket.emit('all sc', allSC);
         socket.emit('draft rejoined');
         io.emit('lobby update', draftState.drafters);
 
@@ -99,21 +105,30 @@ function registerSocketHandlers(io) {
         return;
       }
 
-      // Validate the SM's UserID
-      const smData = allSMs[UserID];
-      if (!smData) {
-        socket.emit('registration rejected', 'SM not found.');
+      // Query for name of sm based on the sm id passed in
+      const result = await pgPool.query(
+        `SELECT name FROM users WHERE user_id = $1 LIMIT 1`,
+        [UserID]
+      );
+      
+      // One more extra check for valid sm id
+      if (result.rowCount === 0) {
+        socket.emit('registration rejected', 'SM ID not found in users table.');
         return;
       }
+      
+      const smName = result.rows[0].name;
 
       // Add the SM to the list of drafters
-      const newDrafter = { id: socket.id, userId: UserID, name: smData.Name };
+      const newDrafter = { id: socket.id, userId: UserID, name: smName || UserID };
       draftState.drafters.push(newDrafter);
 
       // Notify the client of successful registration
       socket.emit('registration confirmed', newDrafter);
       socket.emit('assigned projects', smProjectsMap[UserID] || {});
       socket.emit('all consultants', allConsultants);
+      socket.emit('all pm', allPM);
+      socket.emit('all sc', allSC);
 
       // Update the lobby for all connected clients
       io.emit('lobby update', draftState.drafters);
@@ -123,7 +138,30 @@ function registerSocketHandlers(io) {
      * Event: 'start draft'
      * Starts the draft process if conditions are met.
      */
-    socket.on('start draft', () => {
+    socket.on('start draft', async ({ project_semester }) => {
+      // Trigger data generation on the backend
+      await fetch(`${baseApiUrl}/api/start-draft?project_semester=${project_semester}`);
+
+      // Clear require cache to ensure we load updated files
+      delete require.cache[require.resolve('../data/consultants')];
+      delete require.cache[require.resolve('../data/projects')];
+      delete require.cache[require.resolve('../data/smData')];
+      delete require.cache[require.resolve('../data/pmData')];
+      delete require.cache[require.resolve('../data/scData')];
+
+      // Reload latest data into memory
+      allConsultants = require('../data/consultants').allConsultants;
+      smProjectsMap = require('../data/projects');
+      allSMs = require('../data/smData');
+      allPM = require('../data/pmData');
+      allSC = require('../data/scData');
+
+      // Reset state
+      pickedConsultants = [];
+      selectedConsultants = Object.keys(allConsultants).length;
+
+      // console.log("Reloaded consultants:", Object.keys(allConsultants));
+
       if (!draftState.isDraftStarted && draftState.drafters.length > 0) {
         // Shuffle the drafters to randomize the order
         const shuffled = shuffleArray([...draftState.drafters]);
@@ -149,6 +187,7 @@ function registerSocketHandlers(io) {
 
         // Notify all clients that the draft has started
         io.emit('draft started', draftState.drafters);
+        io.emit('all consultants', allConsultants);
         emitDraftStatus(io);
         updatePrivileges(io);
       }
@@ -158,7 +197,7 @@ function registerSocketHandlers(io) {
      * Event: 'pick consultant'
      * Handles the selection of a consultant for a project.
      */
-    socket.on('pick consultant', ({ consultantId, projectId }) => {
+    socket.on('pick consultant', async ({ consultantId, projectId }) => {
       // Ensure the draft has started
       if (!draftState.isDraftStarted) return;
 
@@ -210,20 +249,29 @@ function registerSocketHandlers(io) {
         consultantName: consultant.Name,
         consultantRole: consultant.Role,
         projectId: projectId,
-        projectName: projectId,
-        message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${projectId} at ${timestamp}`
+        projectName: userProjects[projectId]['Description'],
+        message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${userProjects[projectId]['Description']} (${projectId}) at ${timestamp}`
       };
       postToGoogleSheet(data);
-      postToGoogleSheet(smProjectsMap);
+      postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC }); 
 
       // Notify all clients of the selection
-      io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${projectId}`);
+      io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${userProjects[projectId]['Description']} (${projectId})`);
       
 
-      console.log(selectedConsultants)
-      if (selectedConsultants == 0) {
-        console.log('draft ended')
-        emitDraftStatus(io)
+      // console.log(selectedConsultants)
+      if (selectedConsultants === 0) {
+        console.log('draft ended');
+
+        // Wait for the database upload to complete
+        await new Promise((resolve) => {
+          socket.emit('end draft', () => {
+            console.log('Draft picks uploaded to the database.');
+            resolve();
+          });
+        });
+
+        emitDraftStatus(io);
         io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
         draftState.isDraftStarted = false; // Optionally, mark the draft as ended
         
@@ -308,7 +356,7 @@ function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('end draft', () => {
+    socket.on('end draft', async () => {
       const remainingConsultants = Object.values(allConsultants).filter(
         (consultant) => !pickedConsultants.some(
           (picked) => picked.UserID === consultant.UserID
@@ -318,10 +366,19 @@ function registerSocketHandlers(io) {
       const data = {"remainingConsultants" : remainingConsultants}
       postToGoogleSheet(data)
 
-      console.log("data being passed is", data);
+      // console.log("data being passed is", data);
+
+      try {
+        const response = await fetch('http://localhost:3000/api/import-project-data'); // adjust if deployed
+        const result = await response.json();
+        console.log('Imported to DB:', result);
+      } catch (error) {
+        console.error('Failed to import to DB:', error);
+      }
       
       emitDraftStatus(io)
-      io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
+      io.emit('endDraft', 'All picks have been made. Ending draft.');
+      draftState.isDraftStarted = false;
 
 
       // draftState.isDraftStarted = false;
@@ -366,40 +423,6 @@ function registerSocketHandlers(io) {
       }
     });
   });
-}
-
-function validateSM(smid){
-
-// async function validateSM(smid){
-
-  // to do when we can connect to cloud datatbase
-  // try {
-  //   const response = await fetch("/api/login-validation", {
-  //     method: "POST",
-  //     headers: {
-  //       "Content-Type": "application/json"
-  //     },
-  //     body: JSON.stringify({ sm_id, project_semester })
-  //   });
-
-  //   const data = await response.json();
-  //   if (response.ok) {
-  //     console.log("Login Validated:", data);
-  //     return True
-  //   } else {
-  //     console.error("Login invalid", data.error);
-  //     return False
-  //   }
-  // } catch (err) {
-  //   console.error("Request failed:", err);
-  //   return False
-  // }
-
-  if(smid == 'sm1' || smid == 'sm2' || smid == 'sm3' || smid == 'sm4' || smid == 'sm5'){
-    return true
-  }
-
-  return false
 }
 
 /**

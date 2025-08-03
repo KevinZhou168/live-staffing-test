@@ -5,9 +5,12 @@ const socket = io();
 let currentUser = null;
 let assignedProjects = {}; // Projects assigned to the current user
 let allConsultants = {}; // List of all consultants
+let pmList = {}; // List of all PMs
+let scList = {}; // List of all SCs
 let drafted = new Set(); // Set of consultants already drafted
 let currentConsultantId = null; // ID of the currently selected consultant
 let hasPrivilege = false; // Whether the current user has the privilege to pick
+let currentSemester = null;
 
 // DOM elements for various parts of the UI
 const loginModal = document.getElementById('login-modal');
@@ -26,7 +29,7 @@ const pickBtn = document.getElementById('pick-btn');
 const deferBtn = document.getElementById('defer-btn'); // Add reference to defer button
 const leaveLobbyBtn = document.getElementById('leave-lobby');
 const leaveDraftBtn = document.getElementById('leave-draft');
-const endDraftBtn = document.getElementById("end-draft")
+const endDraftBtn = document.getElementById("end-draft");
 
 // Show the login modal when the app starts
 loginModal.style.display = 'flex';
@@ -39,6 +42,7 @@ const validateAndSubmitLogin = () => {
     // Clear any previous validation messages
     document.querySelectorAll('.error-message').forEach(el => el.remove());
 
+    // check for valid sm and semester; check after null checks
     let isValid = true;
 
     // Validate UserID input
@@ -59,9 +63,22 @@ const validateAndSubmitLogin = () => {
         isValid = false;
     }
 
-    // If both inputs are valid, emit the 'register sm' event
+    // Validate SM & semester before allowing login
     if (isValid) {
-        socket.emit('register sm', { UserID: id, joinCode: code });
+        fetch(`/api/login-validation?sm_id=${id}&project_semester=${code}`)
+            .then(res => {
+                console.log("Received response", res.status);
+                if (!res.ok) throw new Error("SM ID not found for this semester");
+                return res.json(); // even if empty
+            })
+            .then(() => {
+                console.log("Emitting register sm...");
+                currentSemester = code;
+                socket.emit('register sm', { UserID: id, joinCode: code });
+            })
+            .catch(err => {
+                alert("Login failed: " + err.message);
+            });
     }
 };
 
@@ -94,7 +111,7 @@ socket.on('lobby update', (users) => {
 
 // Handle the start draft button click
 startBtn.onclick = () => {
-    socket.emit('start draft'); // Emit a 'start draft' event to the server
+    socket.emit('start draft', { project_semester: currentSemester }); // Emit a 'start draft' event to the server
 };
 
 // Add handler for registration rejection
@@ -134,6 +151,16 @@ socket.on('draft rejoined', () => {
     draftInterface.style.display = 'block';
 });
 
+// Receive the pm data
+socket.on('all pm', (allPM) => {
+    pmList = allPM; // Update the assigned projects
+});
+
+// Receive the sc data
+socket.on('all sc', (allSC) => {
+    scList = allSC; // Update the assigned projects
+});
+
 // Receive the projects assigned to the current user
 socket.on('assigned projects', (projects) => {
     assignedProjects = projects; // Update the assigned projects
@@ -142,6 +169,7 @@ socket.on('assigned projects', (projects) => {
 
 // Receive the list of all consultants
 socket.on('all consultants', (consultants) => {
+    console.log("Received consultants:", consultants);
     allConsultants = consultants; // Update the list of consultants
     renderConsultants(); // Render the consultants in the UI
 });
@@ -182,47 +210,197 @@ function renderProjects() {
         const div = document.createElement('div');
         const ncList = (data.NC || []).map(nc => nc.Name).join(', ') || 'None'; // List of NCs for the project
         const ecList = (data.EC || []).map(ec => ec.Name).join(', ') || 'None';
+        const scNames = (data.SC || []).map(scId => scList[scId]?.Name || '(Unknown)').join(', ');
         div.innerHTML = `
-            <strong>${projectId}</strong><br>
-            PM: ${data.PM}<br>
-            SCs: ${data.SC.join(', ')}<br>
-            <strong>NCs:</strong> ${ncList}<br><br>
-            <strong>ECs:</strong> ${ecList}<br><br>
+            <strong>${assignedProjects[projectId]['Description']} (${projectId})</strong><br>
+            PM: ${pmList[data.PM]['Name']}<br>
+            SCs: ${scNames}<br>
+            NCs: ${ncList}<br>
+            ECs: ${ecList}<br><br>
         `;
         projectList.appendChild(div); // Add the project to the list
 
         const opt = document.createElement('option');
         opt.value = projectId; // Set the project ID as the value
-        opt.textContent = projectId; // Set the project ID as the text
+        opt.textContent = `${assignedProjects[projectId]['Description']} (${projectId})`; // Set the project ID as the text
         projectSelect.appendChild(opt); // Add the project to the dropdown
     }
 }
 
 // Render the list of consultants in the UI
+// function renderConsultants() {
+//     consultantList.innerHTML = ''; // Clear the current consultant list
+
+//     Object.values(allConsultants).forEach(c => {
+//         const li = document.createElement('li');
+//         li.textContent = `${c.Name} (${c.UserID}) - ${c.UserID}, ${c.Email}, ${c.Role}, ${c.Major}, ${c.Year}, ${c.Num_SemestersInIBC}, ${c.ConsultantScore}, ${c.TimeZone}, ${c.Availability_Mon}, ${c.Availability_Tue}, ${c.Availability_Wed}, ${c.Availability_Thu}, ${c.Availability_Fri}, ${c.Availability_Sat}, ${c.Availability_Sun}, ${c.WillingToTravel}, ${c.WeekBeforeFinalsAvailability}, ${c.IndustryInterests}, ${c.FunctionalAreaInterests}`; // Consultant details
+
+//         if (drafted.has(c.UserID)) {
+//             li.classList.add('disabled'); // Mark the consultant as drafted
+//         } else if (hasPrivilege) {
+//             li.classList.remove('disabled');
+//             li.onclick = () => {
+//                 currentConsultantId = c.UserID; // Set the selected consultant ID
+//                 document.querySelectorAll('#consultants li').forEach(el => {
+//                     el.classList.remove('highlight'); // Remove highlight from other consultants
+//                 });
+//                 li.classList.add('highlight'); // Highlight the selected consultant
+//             };
+//         } else {
+//             li.classList.remove('highlight');
+//             li.onclick = null; // Disable click events for other users
+//         }
+//         consultantList.appendChild(li); // Add the consultant to the list
+//     });
+// }
+
+function createTimeGrid(consultant) {
+    // Generate time labels (7am to 10pm in 30min intervals)
+    const timeSlots = [];
+    for (let hour = 7; hour < 22; hour++) {
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour > 12 ? hour - 12 : hour;
+        timeSlots.push(`${hour12}:00${ampm}`);
+        timeSlots.push(`${hour12}:30${ampm}`);
+    }
+    timeSlots.push('10:00PM'); // Add the final 10 PM slot
+
+    // Convert availability string to array of booleans, padding with zeros if needed
+    const getAvailabilityArray = (bitString) => {
+        const bits = bitString ? bitString.split('').map(bit => bit === '1') : [];
+        return bits.concat(Array(30 - bits.length).fill(false));
+    };
+
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const availabilities = {
+        Mon: getAvailabilityArray(consultant.Availability_Mon),
+        Tue: getAvailabilityArray(consultant.Availability_Tue),
+        Wed: getAvailabilityArray(consultant.Availability_Wed),
+        Thu: getAvailabilityArray(consultant.Availability_Thu),
+        Fri: getAvailabilityArray(consultant.Availability_Fri),
+        Sat: getAvailabilityArray(consultant.Availability_Sat),
+        Sun: getAvailabilityArray(consultant.Availability_Sun)
+    };
+
+    return `
+        <div class="availability-wrapper">
+            <div class="availability-calendar">
+                <div class="calendar-header">
+                    <div class="time-column">Time</div>
+                    ${days.map(day => `<div class="day-header">${day}</div>`).join('')}
+                </div>
+                <div class="calendar-grid">
+                    ${timeSlots.map((time, i) => `
+                        <div class="time-row">
+                            <div class="time-label">${time}</div>
+                            ${days.map(day => `
+                                <div class="time-slot-container">
+                                    <div class="time-grid-line"></div>
+                                    ${i < timeSlots.length - 1 ? `
+                                        <div class="time-slot ${availabilities[day][i] ? 'available' : ''}" 
+                                            data-time="${time}"
+                                            data-day="${day}">
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function renderConsultants() {
     consultantList.innerHTML = ''; // Clear the current consultant list
 
     Object.values(allConsultants).forEach(c => {
-        const li = document.createElement('li');
-        li.textContent = `${c.Name} (${c.UserID}) - ${c.Major}, Year ${c.Year}`; // Consultant details
+        const card = document.createElement('div');
+        card.className = 'consultant-mini-card';
+        
+        card.innerHTML = `
+            <div class="consultant-name">${c.Name} (${c.UserID}) - Role: ${c.Role} | Score: ${c.ConsultantScore}</div>
+        `;
 
         if (drafted.has(c.UserID)) {
-            li.classList.add('disabled'); // Mark the consultant as drafted
+            card.classList.add('disabled');
         } else if (hasPrivilege) {
-            li.classList.remove('disabled');
-            li.onclick = () => {
-                currentConsultantId = c.UserID; // Set the selected consultant ID
-                document.querySelectorAll('#consultants li').forEach(el => {
-                    el.classList.remove('highlight'); // Remove highlight from other consultants
+            card.classList.remove('disabled');
+            card.onclick = () => {
+                currentConsultantId = c.UserID;
+                document.querySelectorAll('.consultant-mini-card').forEach(el => {
+                    el.classList.remove('highlight');
                 });
-                li.classList.add('highlight'); // Highlight the selected consultant
+                card.classList.add('highlight');
+                showConsultantDetails(c);
             };
         } else {
-            li.classList.remove('highlight');
-            li.onclick = null; // Disable click events for other users
+            card.classList.remove('highlight');
+            card.onclick = null; // Disable click events for other users
         }
-        consultantList.appendChild(li); // Add the consultant to the list
+        
+        consultantList.appendChild(card);
     });
+}
+
+function showConsultantDetails(consultant) {
+    // Create or show sidebar
+    let sidebar = document.getElementById('consultant-sidebar');
+    if (!sidebar) {
+        sidebar = document.createElement('div');
+        sidebar.id = 'consultant-sidebar';
+        document.body.appendChild(sidebar);
+    }
+
+    // Get the content wrapper
+    const contentWrapper = document.querySelector('.content-wrapper');
+
+    sidebar.innerHTML = `
+        <div class="sidebar-header">
+            <h2>${consultant.Name}</h2>
+            <button class="close-sidebar">×</button>
+        </div>
+        <div class="sidebar-content">
+            <section>
+                <h3>Basic Information</h3>
+                <p><strong>UserID:</strong> ${consultant.UserID}</p>
+                <p><strong>Email:</strong> ${consultant.Email}</p>
+                <p><strong>Role:</strong> ${consultant.Role}</p>
+                <p><strong>Major:</strong> ${consultant.Major}</p>
+                <p><strong>Year:</strong> ${consultant.Year}</p>
+                <p><strong>IBC Experience:</strong> ${consultant.Num_SemestersInIBC} semesters</p>
+                <p><strong>Score:</strong> ${consultant.ConsultantScore}</p>
+            </section>
+
+            <section>
+                <h3>Availability</h3>
+                ${createTimeGrid(consultant)}
+                <p><strong>Time Zone:</strong> ${consultant.TimeZone}</p>
+                <p><strong>Willing to Travel:</strong> ${consultant.WillingToTravel}</p>
+                <p><strong>Finals Week:</strong> ${consultant.WeekBeforeFinalsAvailability}</p>
+            </section>
+
+            <section>
+                <h3>Interests</h3>
+                <p><strong>Industry:</strong> ${consultant.IndustryInterests}</p>
+                <p><strong>Functional Areas:</strong> ${consultant.FunctionalAreaInterests}</p>
+            </section>
+        </div>
+    `;
+
+    sidebar.classList.add('active');
+    contentWrapper.classList.add('sidebar-active');
+
+    // Handle close button
+    sidebar.querySelector('.close-sidebar').onclick = () => {
+        sidebar.classList.remove('active');
+        contentWrapper.classList.remove('sidebar-active');
+        document.querySelectorAll('.consultant-mini-card').forEach(el => {
+            el.classList.remove('highlight');
+        });
+        currentConsultantId = null;
+    };
 }
 
 // Handle the pick button click
@@ -233,7 +411,7 @@ pickBtn.onclick = () => {
 
         if (!consultant) return; // Exit if the consultant is not found
 
-        const confirmMsg = `Are you sure you want to select ${consultant.Name} for ${projectId}?`;
+        const confirmMsg = `Are you sure you want to select ${consultant.Name} for ${assignedProjects[projectId]['Description']} (${projectId})?`;
 
         if (confirm(confirmMsg)) {
             // Emit a 'pick consultant' event to the server

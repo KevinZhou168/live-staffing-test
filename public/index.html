@@ -26,53 +26,55 @@
       <button id="login-btn">Enter</button>
     </div>
 
-    <!-- Lobby Section -->
-    <div id="lobby">
-      <!-- Title for the lobby -->
-      <h2>Lobby</h2>
-      
-      <!-- Message displayed while waiting for other users -->
-      <p>Waiting for other SMs to join...</p>
+    <div class="content-wrapper">
+      <!-- Lobby Section -->
+      <div id="lobby">
+        <!-- Title for the lobby -->
+        <h2>Lobby</h2>
+        
+        <!-- Message displayed while waiting for other users -->
+        <p>Waiting for other SMs to join...</p>
 
-      <!-- List of users in the lobby -->
-      <ul id="user-list"></ul>
+        <!-- List of users in the lobby -->
+        <ul id="user-list"></ul>
 
-      <!-- Button to start the draft -->
-      <div style="display: flex; gap: 10px;">
-        <button id="start-draft">Start Draft</button>
-        <button id="leave-lobby">Leave</button>
-      </div>
-    </div>
-
-    <!-- Draft Interface -->
-    <div id="draft-interface">
-      <!-- Status message for the draft -->
-      <h2 id="status">Waiting...</h2>
-
-      <!-- Section for displaying the user's projects -->
-      <div class="section">
-        <h3>Your Projects</h3>
-        <div id="project-list"></div>
-      </div>
-
-      <!-- Section for displaying available consultants -->
-      <div class="section">
-        <h3>Available Consultants</h3>
-        <ul id="consultants"></ul>
-      </div>
-
-      <!-- Section for selecting a project and picking a consultant -->
-      <div class="section">
-        <!-- Dropdown for selecting a project -->
-        <label for="project-select">Select Project:</label><br />
-        <select id="project-select"></select><br />
-
-        <!-- Button to pick a consultant (disabled by default) -->
+        <!-- Button to start the draft -->
         <div style="display: flex; gap: 10px;">
-          <button id="pick-btn" disabled>Pick Selected Consultant</button>
-          <button id="defer-btn" disabled>Defer Turn</button>
-          <button id="leave-draft" class="leave-btn">Leave Draft</button>
-          <button id="end-draft" class="leave-btn">End Draft</button>
+          <button id="start-draft">Start Draft</button>
+          <button id="leave-lobby">Leave</button>
+        </div>
+      </div>
+
+      <!-- Draft Interface -->
+      <div id="draft-interface">
+        <!-- Status message for the draft -->
+        <h2 id="status">Waiting...</h2>
+
+        <!-- Section for displaying the user's projects -->
+        <div class="section">
+          <h3>Your Projects</h3>
+          <div id="project-list"></div>
+        </div>
+
+        <!-- Section for displaying available consultants -->
+        <div class="section">
+          <h3>Available Consultants</h3>
+          <ul id="consultants"></ul>
+        </div>
+
+        <!-- Section for selecting a project and picking a consultant -->
+        <div class="section">
+          <!-- Dropdown for selecting a project -->
+          <label for="project-select">Select Project:</label><br />
+          <select id="project-select"></select><br />
+
+          <!-- Button to pick a consultant (disabled by default) -->
+          <div style="display: flex; gap: 10px;">
+            <button id="pick-btn" disabled>Pick Selected Consultant</button>
+            <button id="defer-btn" disabled>Defer Turn</button>
+            <button id="leave-draft" class="leave-btn">Leave Draft</button>
+            <button id="end-draft" class="leave-btn">End Draft</button>
+          </div>
         </div>
       </div>
     </div>

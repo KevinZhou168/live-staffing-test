@@ -198,3 +198,245 @@ button:disabled {
     display: block;
     font-weight: bold;
 }
+
+/* Add these new styles while keeping your existing CSS */
+
+.consultant-mini-card {
+    padding: 12px 15px;
+    margin: 6px 0;
+    background-color: var(--uiuc-white);
+    border-radius: 4px;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+}
+
+.consultant-mini-card:hover {
+    background-color: var(--uiuc-light-orange);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.consultant-mini-card.disabled {
+    color: #999;
+    background-color: #eee !important;
+    text-decoration: line-through;
+    pointer-events: none;
+}
+
+.consultant-mini-card.highlight {
+    background-color: var(--uiuc-light-orange) !important;
+    font-weight: bold;
+    border-left: 4px solid var(--uiuc-orange);
+}
+
+.consultant-name {
+    font-weight: bold;
+    color: var(--uiuc-blue);
+}
+
+#consultant-sidebar {
+    position: fixed;
+    right: -400px;
+    top: 0;
+    width: 400px;
+    height: 100%;
+    background-color: var(--uiuc-white);
+    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+    transition: right 0.3s ease;
+    z-index: 1000;
+    overflow-y: auto;
+}
+
+#consultant-sidebar.active {
+    right: 0;
+}
+
+.sidebar-header {
+    background-color: var(--uiuc-blue);
+    color: var(--uiuc-white);
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sidebar-header h2 {
+    color: var(--uiuc-white);
+    margin: 0;
+}
+
+.close-sidebar {
+    background: none;
+    border: none;
+    color: var(--uiuc-white);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: auto;
+    max-width: none;
+}
+
+.sidebar-content {
+    padding: 20px;
+}
+
+.sidebar-content section {
+    margin-bottom: 24px;
+    padding: 15px;
+    background-color: var(--uiuc-gray);
+    border-radius: 6px;
+}
+
+/* .availability-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin: 12px 0;
+}
+
+.availability-grid span {
+    text-align: center;
+    padding: 8px 4px;
+    background-color: var(--uiuc-gray);
+    border-radius: 4px;
+    font-size: 0.9em;
+} */
+
+/* .availability-grid span.available {
+    background-color: var(--uiuc-light-blue);
+    color: var(--uiuc-white);
+} */
+
+.select-consultant {
+    background-color: var(--uiuc-orange);
+    color: var(--uiuc-white);
+    padding: 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    transition: background-color 0.3s;
+}
+
+.select-consultant:hover {
+    background-color: #d43b1a;
+}
+
+/* Add this if you want the main content to shift when sidebar opens */
+.content-wrapper {
+    transition: margin-right 0.3s ease;
+}
+
+.content-wrapper.sidebar-active {
+    margin-right: 400px;
+}
+
+.availability-wrapper {
+    overflow-x: auto;
+    margin: 15px 0;
+    border: 1px solid var(--uiuc-gray);
+    border-radius: 4px;
+    background: white;
+    padding: 15px;
+}
+
+.availability-calendar {
+    min-width: 800px; /* Minimum width to ensure proper display */
+    position: relative;
+}
+
+.calendar-header {
+    display: grid;
+    grid-template-columns: 80px repeat(7, 1fr);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--uiuc-gray);
+    padding: 8px 0;
+    margin-bottom: 15px;
+}
+
+.time-column, .day-header {
+    padding: 8px;
+    text-align: center;
+    font-weight: bold;
+    color: var(--uiuc-blue);
+    border-bottom: 1px solid var(--uiuc-gray);
+}
+
+.calendar-grid {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-top: 15px;
+}
+
+.time-row {
+    display: grid;
+    grid-template-columns: 80px repeat(7, 1fr);
+    position: relative;
+    height: 30px; /* Fixed height for consistency */
+    border-top: 1px solid var(--uiuc-gray); /* Add top border for gridline */
+}
+
+.time-label {
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--uiuc-blue);
+    background: var(--uiuc-white);
+    border-right: 1px solid var(--uiuc-gray);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    transform: translateY(-50%); /* Move label up to align with gridline */
+    position: relative;
+}
+
+.time-slot-container {
+    position: relative;
+    height: 100%;
+    border-right: 1px solid var(--uiuc-gray);
+}
+
+/* Remove the separate grid line since we're using border-top */
+.time-grid-line {
+    display: none;
+}
+
+.time-slot {
+    position: absolute;
+    top: 1px;
+    left: 0;
+    right: 0;
+    height: 28px;
+    transition: background-color 0.2s;
+}
+
+/* Add a bottom border to the last time row */
+.calendar-grid > .time-row:last-child {
+    border-bottom: 1px solid var(--uiuc-gray);
+}
+
+.time-slot.available {
+    background-color: var(--uiuc-light-blue);
+    opacity: 0.7;
+}
+
+.time-slot:hover {
+    opacity: 1;
+}
+
+.time-slot:hover::after {
+    content: attr(data-time);
+    position: absolute;
+    background: var(--uiuc-blue);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 3;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}

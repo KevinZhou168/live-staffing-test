@@ -1,56 +1,56 @@
 const smProjectsMap = {
-  sm1: {
-    project1: {
-      PM: 'pm1',
-      SC: ['sc1'],
-      NC: [],
-      EC: [],
-      Description: 'AI Research Project',
-    },
-    project2: {
-      PM: 'pm2',
-      SC: ['sc2'],
-      NC: [],
-      EC: [],
-      Description: 'Blockchain Development',
-    },
+  "7778": {
+    "2": {
+      "PM": 7773,
+      "SC": [
+        7782
+      ],
+      "NC": [],
+      "EC": [],
+      "Description": "testProject2"
+    }
   },
-  sm2: {
-    project3: {
-      PM: 'pm3',
-      SC: ['sc3'],
-      NC: [],
-      EC: [],
-      Description: 'Marketing Analytics',
+  "7779": {
+    "1": {
+      "PM": 7776,
+      "SC": [
+        7781
+      ],
+      "NC": [],
+      "EC": [],
+      "Description": "testProject1"
     },
+    "4": {
+      "PM": 7774,
+      "SC": [
+        7784
+      ],
+      "NC": [],
+      "EC": [],
+      "Description": "testProject4"
+    }
   },
-  sm3: {
-    project4: {
-      PM: 'pm4',
-      SC: [],
-      NC: [],
-      EC: [],
-      Description: 'Cybersecurity Initiative',
+  "7780": {
+    "3": {
+      "PM": 7775,
+      "SC": [
+        7783,
+        7786
+      ],
+      "NC": [],
+      "EC": [],
+      "Description": "testProject3"
     },
-  },
-  sm4: {
-    project5: {
-      PM: 'pm5',
-      SC: [],
-      NC: [],
-      EC: [],
-      Description: 'E-commerce Optimization',
-    },
-  },
-  sm5: {
-    project6: {
-      PM: 'pm6',
-      SC: [],
-      NC: [],
-      EC: [],
-      Description: 'Financial Modeling',
-    },
-  },
+    "5": {
+      "PM": 7777,
+      "SC": [
+        7785
+      ],
+      "NC": [],
+      "EC": [],
+      "Description": "testProject5"
+    }
+  }
 };
 
 module.exports = smProjectsMap;
