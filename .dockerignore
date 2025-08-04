@@ -1,0 +1,5 @@
+node_modules
+lib
+.DS_Store
+.env     # only if you're using secrets via Cloud Run env vars
+*.log

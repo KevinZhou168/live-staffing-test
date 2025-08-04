@@ -24,7 +24,13 @@ const app = express();
 const server = createServer(app);
 
 // Create a Socket.IO server and attach it to the HTTP server
-const io = new Server(server);
+// const io = new Server(server);
+const io = require('socket.io')(server, {
+  cors: {
+    origin: process.env.FRONTEND_ORIGIN || "*",  // in dev, "*" is fine
+    methods: ["GET", "POST"]
+  }
+});
 
 // Serve static files from the 'public' directory
 app.use(express.static(join(__dirname, 'public')));
