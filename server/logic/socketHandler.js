@@ -14,7 +14,7 @@ const { shuffleArray } = require('./draftUtils'); // Utility function to shuffle
 const baseApiUrl = process.env.BASE_API_URL;
 
 const pgPool = require('../../db.js'); // Adjust path based on file location
-const { all } = require('axios');
+const { all, post } = require('axios');
 
 let selectedConsultants = Object.keys(allConsultants).length;
 /**
@@ -185,13 +185,65 @@ function registerSocketHandlers(io) {
         draftState.isSecondTurn = false;
         draftState.isInitialTurn = true;
 
+        // Post the staffing order to Google Sheets
+        const orderedNames = [...draftState.originalDraftOrder]
+          .sort((a, b) => a.originalIndex - b.originalIndex)
+          .map(({ userId }) => {
+            const name = allSMs[userId]?.Name || "Unknown";
+            return `${name} (${userId})`;
+          });
+        const data = {
+          type: 'staffingOrder',
+          order: orderedNames
+        };
+
         // Notify all clients that the draft has started
         io.emit('draft started', draftState.drafters);
         io.emit('all consultants', allConsultants);
         emitDraftStatus(io);
         updatePrivileges(io);
+
+        // Log sheet posting in background
+        postToGoogleSheet(data).catch(err => {
+          console.error("Sheet post failed:", err);
+          // optional: notify admins or retry
+        });
       }
     });
+
+    socket.on('end draft', async () => {
+      const remainingConsultants = Object.values(allConsultants).filter(
+        (consultant) => !pickedConsultants.some(
+          (picked) => picked.UserID === consultant.UserID
+        )
+      );
+      
+      const data = {"remainingConsultants" : remainingConsultants}
+      // Log sheet posting in background
+      postToGoogleSheet(data).catch(err => {
+        console.error("Sheet post failed:", err);
+        // optional: notify admins or retry
+      });
+
+      // console.log("data being passed is", data);
+
+      try {
+        const response = await fetch(`${baseApiUrl}/api/import-project-data`, {
+          method: 'POST',
+        }); // adjust if deployed
+        const result = await response.json();
+        console.log('Imported to DB:', result);
+      } catch (error) {
+        console.error('Failed to import to DB:', error);
+      }
+      
+      emitDraftStatus(io)
+      io.emit('endDraft', 'All picks have been made. Ending draft.');
+      draftState.isDraftStarted = false;
+
+
+      // draftState.isDraftStarted = false;
+    })
 
     /**
      * Event: 'pick consultant'
@@ -252,24 +304,18 @@ function registerSocketHandlers(io) {
         projectName: userProjects[projectId]['Description'],
         message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${userProjects[projectId]['Description']} (${projectId}) at ${timestamp}`
       };
-      postToGoogleSheet(data);
-      postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC }); 
 
-      // Notify all clients of the selection
-      io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${userProjects[projectId]['Description']} (${projectId})`);
-      
-
-      // console.log(selectedConsultants)
       if (selectedConsultants === 0) {
         console.log('draft ended');
-
-        // Wait for the database upload to complete
-        await new Promise((resolve) => {
-          socket.emit('end draft', () => {
-            console.log('Draft picks uploaded to the database.');
-            resolve();
-          });
-        });
+        
+        io.emit('draft finalizing', 'Finalizing draft and uploading to database...');
+        
+        await Promise.all([
+          postToGoogleSheet(data),
+          postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC })
+        ]);
+        
+        await handleEndDraft(io);
 
         emitDraftStatus(io);
         io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
@@ -277,6 +323,20 @@ function registerSocketHandlers(io) {
         
         return; 
       }
+      
+      // Log sheet posting in background
+      postToGoogleSheet(data).catch(err => {
+        console.error("Sheet post failed:", err);
+        // optional: notify admins or retry
+      });
+
+      postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC }).catch(err => {
+        console.error("Sheet post failed:", err);
+        // optional: notify admins or retry
+      });
+
+      // Notify all clients of the selection
+      io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${userProjects[projectId]['Description']} (${projectId})`);
 
       emitDraftStatus(io);
       rotatePrivileges(io);
@@ -356,34 +416,6 @@ function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('end draft', async () => {
-      const remainingConsultants = Object.values(allConsultants).filter(
-        (consultant) => !pickedConsultants.some(
-          (picked) => picked.UserID === consultant.UserID
-        )
-      );
-      
-      const data = {"remainingConsultants" : remainingConsultants}
-      postToGoogleSheet(data)
-
-      // console.log("data being passed is", data);
-
-      try {
-        const response = await fetch('http://localhost:3000/api/import-project-data'); // adjust if deployed
-        const result = await response.json();
-        console.log('Imported to DB:', result);
-      } catch (error) {
-        console.error('Failed to import to DB:', error);
-      }
-      
-      emitDraftStatus(io)
-      io.emit('endDraft', 'All picks have been made. Ending draft.');
-      draftState.isDraftStarted = false;
-
-
-      // draftState.isDraftStarted = false;
-    })
-
     /**
      * Event: 'disconnect'
      * Handles a client disconnecting from the server.
@@ -424,6 +456,40 @@ function registerSocketHandlers(io) {
     });
   });
 }
+
+// Handler for ending the draft and posting data to Google Sheets
+/**
+ * Handles the end of the draft process.
+ * Posts remaining consultants to Google Sheets and imports project data to the database.
+ *
+ * @param {Server} io - The Socket.IO server instance.
+ */
+async function handleEndDraft(io) {
+  const remainingConsultants = Object.values(allConsultants).filter(
+    (consultant) =>
+      !pickedConsultants.some((picked) => picked.UserID === consultant.UserID)
+  );
+
+  const data = {"remainingConsultants" : remainingConsultants };
+  postToGoogleSheet(data).catch(err => {
+    console.error("Sheet post failed:", err);
+    // optional: notify admins or retry
+  });
+
+  try {
+    const response = await fetch(`${baseApiUrl}/api/import-project-data`, {
+      method: 'POST',
+    });
+    const result = await response.json();
+    console.log('Imported to DB:', result);
+  } catch (error) {
+    console.error('Failed to import to DB:', error);
+  }
+
+  emitDraftStatus(io);
+  draftState.isDraftStarted = false;
+}
+
 
 /**
  * Rotates the privileges to the next drafter in the queue.

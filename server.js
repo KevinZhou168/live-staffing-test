@@ -4,6 +4,7 @@ const { createServer } = require('node:http'); // Node.js HTTP server
 const { join } = require('node:path'); // Utility for handling file paths
 const { Server } = require('socket.io'); // Socket.IO for real-time communication
 const registerSocketHandlers = require('./server/logic/socketHandler'); // Function to register socket event handlers
+const { postToGoogleSheet } = require('./server/logic/staffingHistoryHandler'); // Function to post data to Google Sheets
 
 require('dotenv').config();
 const cors = require("cors");
@@ -77,49 +78,199 @@ app.get("/api/start-draft", async (req, res) => {
   }
 
   try {
-    // 1. Fetch all SMs for this semester
-    const smProjectsResult = await pgPool.query(`
-      SELECT 
-        project_id,
-        project_name,
-        client_name,
-        em_id,
-        sm_id,
-        pm_id,
-        sc1_id,
-        sc2_id
-      FROM projects
-      WHERE project_semester = $1
-    `, [semester]);
 
     const smProjectsMap = {};
-    const allProjectIds = [];
+    
+    const staffedIdSet = new Set();
+    const projectIdSet = new Set();
 
-    for (const row of smProjectsResult.rows) {
-      allProjectIds.push(row.project_id);
+    const allSMs = {};
+    const allPM = {};
+    const allSC = {};
+
+    const preAssignments = await pgPool.query(`
+      SELECT
+        u.user_id,
+        u.name,
+        u.email,
+        c.major,
+        u.curr_role,
+        c.year,
+        c.availability_mon,
+        c.availability_tue,
+        c.availability_wed,
+        c.availability_thu,
+        c.availability_fri,
+        c.availability_sat,
+        c.availability_sun,
+        c.consultant_score,
+        c.semesters_in_ibc,
+        c.time_zone,
+        c.willing_to_travel,
+        c.week_before_finals_availability,
+        c.industry_interests,
+        c.functional_area_interests,
+        cp.project_id,
+        p.project_name,
+        p.project_semester,
+        p.client_name,
+        p.em_id,
+        p.sm_id,
+        p.pm_id,
+        p.sc1_id,
+        p.sc2_id 
+      FROM consultant_projects cp
+      JOIN users u ON cp.user_id = u.user_id
+      JOIN consultants c ON u.user_id = c.user_id
+      JOIN projects p ON cp.project_id = p.project_id
+      WHERE p.project_semester = $1`
+      , [semester]);
+
+    for (const row of preAssignments.rows) {
+      staffedIdSet.add(Number(row.user_id));
+      projectIdSet.add(Number(row.project_id));
       if (!smProjectsMap[row.sm_id]) {
         smProjectsMap[row.sm_id] = {};
       }
-      smProjectsMap[row.sm_id][row.project_id] = {
-        PM: row.pm_id,
-        SC: [row.sc1_id, row.sc2_id].filter(Boolean),
-        NC: [],
-        EC: [],
-        Description: row.project_name
-      };
+      if (!smProjectsMap[row.sm_id][row.project_id]) {
+        smProjectsMap[row.sm_id][row.project_id] = {
+          PM: row.pm_id,
+          SC: [row.sc1_id, row.sc2_id].filter(Boolean),
+          NC: [],
+          EC: [],
+          Description: row.project_name
+        };
+      }
+      if (row.curr_role === 'NC' && row.user_id) {
+        smProjectsMap[row.sm_id][row.project_id].NC.push({
+          UserID: row.user_id,
+          Name: row.name,
+          Email: row.email,
+          Major: row.major,
+          Role: row.curr_role,
+          Year: row.year,
+          Availability_Mon: row.availability_mon,
+          Availability_Tue: row.availability_tue,
+          Availability_Wed: row.availability_wed,
+          Availability_Thu: row.availability_thu,
+          Availability_Fri: row.availability_fri,
+          Availability_Sat: row.availability_sat,
+          Availability_Sun: row.availability_sun,
+          ConsultantScore: row.consultant_score,
+          Num_SemestersInIBC: row.semesters_in_ibc,
+          TimeZone: row.time_zone,
+          WillingToTravel: row.willing_to_travel,
+          WeekBeforeFinalsAvailability: row.week_before_finals_availability,
+          IndustryInterests: row.industry_interests,
+          FunctionalAreaInterests: row.functional_area_interests
+        });
+      }
+      else if (row.curr_role === 'EC' && row.user_id) {
+        smProjectsMap[row.sm_id][row.project_id].EC.push({
+          UserID: row.user_id,
+          Name: row.name,
+          Email: row.email,
+          Major: row.major,
+          Role: row.curr_role,
+          Year: row.year,
+          Availability_Mon: row.availability_mon,
+          Availability_Tue: row.availability_tue,
+          Availability_Wed: row.availability_wed,
+          Availability_Thu: row.availability_thu,
+          Availability_Fri: row.availability_fri,
+          Availability_Sat: row.availability_sat,
+          Availability_Sun: row.availability_sun,
+          ConsultantScore: row.consultant_score,
+          Num_SemestersInIBC: row.semesters_in_ibc,
+          TimeZone: row.time_zone,
+          WillingToTravel: row.willing_to_travel,
+          WeekBeforeFinalsAvailability: row.week_before_finals_availability,
+          IndustryInterests: row.industry_interests,
+          FunctionalAreaInterests: row.functional_area_interests
+        });
+      }
+
+      // Grab the SM profile
+      if (row.curr_role === 'SM' && row.user_id && !allSMs[row.user_id]) {
+        allSMs[row.user_id] = {
+          UserID: row.user_id,
+          Name: row.name,
+          Email: row.email,
+          Major: row.major,
+          Role: row.curr_role,
+          Year: row.year,
+          Availability_Mon: row.availability_mon,
+          Availability_Tue: row.availability_tue,
+          Availability_Wed: row.availability_wed,
+          Availability_Thu: row.availability_thu,
+          Availability_Fri: row.availability_fri,
+          Availability_Sat: row.availability_sat,
+          Availability_Sun: row.availability_sun,
+          ConsultantScore: row.consultant_score,
+          Num_SemestersInIBC: row.semesters_in_ibc,
+          TimeZone: row.time_zone,
+          WillingToTravel: row.willing_to_travel,
+          WeekBeforeFinalsAvailability: row.week_before_finals_availability,
+          IndustryInterests: row.industry_interests,
+          FunctionalAreaInterests: row.functional_area_interests
+        };
+      }
+
+      // Grab the PM profile
+      if (row.curr_role === 'PM' && row.user_id && !allPM[row.user_id]) {
+        allPM[row.user_id] = {
+          UserID: row.user_id,
+          Name: row.name,
+          Email: row.email,
+          Major: row.major,
+          Role: row.curr_role,
+          Year: row.year,
+          Availability_Mon: row.availability_mon,
+          Availability_Tue: row.availability_tue,
+          Availability_Wed: row.availability_wed,
+          Availability_Thu: row.availability_thu,
+          Availability_Fri: row.availability_fri,
+          Availability_Sat: row.availability_sat,
+          Availability_Sun: row.availability_sun,
+          ConsultantScore: row.consultant_score,
+          Num_SemestersInIBC: row.semesters_in_ibc,
+          TimeZone: row.time_zone,
+          WillingToTravel: row.willing_to_travel,
+          WeekBeforeFinalsAvailability: row.week_before_finals_availability,
+          IndustryInterests: row.industry_interests,
+          FunctionalAreaInterests: row.functional_area_interests
+        };
+      }
+      // Grab the SC profile
+      if (row.curr_role === 'SC' && row.user_id && !allSC[row.user_id]) {
+        allSC[row.user_id] = {
+          UserID: row.user_id,
+          Name: row.name,
+          Email: row.email,
+          Major: row.major,
+          Role: row.curr_role,
+          Year: row.year,
+          Availability_Mon: row.availability_mon,
+          Availability_Tue: row.availability_tue,
+          Availability_Wed: row.availability_wed,
+          Availability_Thu: row.availability_thu,
+          Availability_Fri: row.availability_fri,
+          Availability_Sat: row.availability_sat,
+          Availability_Sun: row.availability_sun,
+          ConsultantScore: row.consultant_score,
+          Num_SemestersInIBC: row.semesters_in_ibc,
+          TimeZone: row.time_zone,
+          WillingToTravel: row.willing_to_travel,
+          WeekBeforeFinalsAvailability: row.week_before_finals_availability,
+          IndustryInterests: row.industry_interests,
+          FunctionalAreaInterests: row.functional_area_interests
+        };
+      }
     }
 
-    // 2. Find all consultants *already staffed*
-    const staffedResult = await pgPool.query(`
-      SELECT DISTINCT user_id
-      FROM consultant_projects
-      WHERE project_id = ANY($1)
-    `, [allProjectIds]);
+    const intStaffedIds = [...staffedIdSet];
 
-    const staffedIds = staffedResult.rows.map(r => r.user_id); // Might be redundant ***
-    const intStaffedIds = staffedIds.map(Number);
-
-    // 3. Fetch all *available* consultants
+    // Fetch all *available* consultants
     const consultantsResult = await pgPool.query(`
       SELECT *
       FROM consultants c
@@ -155,131 +306,56 @@ app.get("/api/start-draft", async (req, res) => {
       };
     }
 
-    // 4. Fetch all SM profiles
-    const smUserIds = Object.keys(smProjectsMap);
-    const smResult = await pgPool.query(`
-      SELECT 
-        u.user_id,
-        u.name,
-        u.email,
-        c.major,
-        c.year
-      FROM users u
-      JOIN consultants c ON u.user_id = c.user_id
-      WHERE u.user_id = ANY($1)
-    `, [smUserIds]);
+    await postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC });
 
-    const allSMs = {};
-    for (const sm of smResult.rows) {
-      allSMs[sm.user_id] = {
-        UserID: sm.user_id,
-        Name: sm.name,
-        Email: sm.email,
-        Major: sm.major,
-        Year: sm.year
-      };
+    // Write data to JS files
+    try {
+      await fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'projects.js'),
+        `const smProjectsMap = ${JSON.stringify(smProjectsMap, null, 2)};\n\nmodule.exports = smProjectsMap;`
+      );
+    } catch (err) {
+      console.error("Error writing projects.js:", err);
     }
-
-    // 5. Fetch all PMs and SCs
-    const pmResult = await pgPool.query(`
-      SELECT *
-      FROM consultants c
-      JOIN users u ON c.user_id = u.user_id
-      WHERE c.status != 'Deferred'
-        AND u.curr_role = 'PM'
-    `);        
-
-    const scResult = await pgPool.query(`
-      SELECT *
-      FROM consultants c
-      JOIN users u ON c.user_id = u.user_id
-      WHERE c.status != 'Deferred'
-        AND u.curr_role = 'SC'
-    `);
-    
-    const allPM = {};
-    for (const c of pmResult.rows) {
-      allPM[c.user_id] = {
-        UserID: c.user_id,
-        Name: c.name,
-        Email: c.email,
-        Major: c.major,
-        Role: c.curr_role,
-        Year: c.year,
-        Availability_Mon: c.availability_mon,
-        Availability_Tue: c.availability_tue,
-        Availability_Wed: c.availability_wed,
-        Availability_Thu: c.availability_thu,
-        Availability_Fri: c.availability_fri,
-        Availability_Sat: c.availability_sat,
-        Availability_Sun: c.availability_sun,
-        ConsultantScore: c.consultant_score,
-        Num_SemestersInIBC: c.semesters_in_ibc,
-        TimeZone: c.time_zone,
-        WillingToTravel: c.willing_to_travel,
-        WeekBeforeFinalsAvailability: c.week_before_finals_availability,
-        IndustryInterests: c.industry_interests,
-        FunctionalAreaInterests: c.functional_area_interests
-      };
+    try {
+      await fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'consultants.js'),
+        `const allConsultants = ${JSON.stringify(allConsultants, null, 2)};\n\nconst pickedConsultants = [];\n\n
+        module.exports = { allConsultants, pickedConsultants };`
+      );
+    } catch (err) {
+      console.error("Error writing consultants.js:", err);
     }
-
-    const allSC = {};
-    for (const c of scResult.rows) {
-      allSC[c.user_id] = {
-        UserID: c.user_id,
-        Name: c.name,
-        Email: c.email,
-        Major: c.major,
-        Role: c.curr_role,
-        Year: c.year,
-        Availability_Mon: c.availability_mon,
-        Availability_Tue: c.availability_tue,
-        Availability_Wed: c.availability_wed,
-        Availability_Thu: c.availability_thu,
-        Availability_Fri: c.availability_fri,
-        Availability_Sat: c.availability_sat,
-        Availability_Sun: c.availability_sun,
-        ConsultantScore: c.consultant_score,
-        Num_SemestersInIBC: c.semesters_in_ibc,
-        TimeZone: c.time_zone,
-        WillingToTravel: c.willing_to_travel,
-        WeekBeforeFinalsAvailability: c.week_before_finals_availability,
-        IndustryInterests: c.industry_interests,
-        FunctionalAreaInterests: c.functional_area_interests
-      };
+    try {
+      await fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'smData.js'),
+        `const allSMs = ${JSON.stringify(allSMs, null, 2)};\n\nmodule.exports = allSMs;`
+      );
+    } catch (err) {
+      console.error("Error writing smData.js:", err);
     }
-
-    // 6. Write data to JS files
-    await fs.promises.writeFile(
-      path.join(__dirname, 'server', 'data', 'projects.js'),
-      `const smProjectsMap = ${JSON.stringify(smProjectsMap, null, 2)};\n\nmodule.exports = smProjectsMap;`
-    );
-
-    await fs.promises.writeFile(
-      path.join(__dirname, 'server', 'data', 'consultants.js'),
-      `const allConsultants = ${JSON.stringify(allConsultants, null, 2)};\n\nconst pickedConsultants = [];\n\n
-module.exports = { allConsultants, pickedConsultants };`
-    );
-
-    await fs.promises.writeFile(
-      path.join(__dirname, 'server', 'data', 'smData.js'),
-      `const allSMs = ${JSON.stringify(allSMs, null, 2)};\n\nmodule.exports = allSMs;`
-    );
-
-    await fs.promises.writeFile(
-      path.join(__dirname, 'server', 'data', 'pmData.js'),
-      `const allPM = ${JSON.stringify(allPM, null, 2)};\n\nmodule.exports = allPM;`
-    );
-
-    await fs.promises.writeFile(
-      path.join(__dirname, 'server', 'data', 'scData.js'),
-      `const allSC = ${JSON.stringify(allSC, null, 2)};\n\nmodule.exports = allSC;`
-    );
+    try {
+      await fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'pmData.js'),
+        `const allPM = ${JSON.stringify(allPM, null, 2)};\n\nmodule.exports = allPM;`
+      );
+    } catch (err) {
+      console.error("Error writing pmData.js:", err);
+    }
+    try {
+      await fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'scData.js'),
+        `const allSC = ${JSON.stringify(allSC, null, 2)};\n\nmodule.exports = allSC;`
+      );
+    } catch (err) {
+      console.error("Error writing scData.js:", err);
+    }
 
     return res.json({
       message: "Draft data generated successfully.",
       smCount: Object.keys(allSMs).length,
-      projectCount: smProjectsResult.rows.length,
+      // projectCount: smProjectsResult.rows.length,
+      projectCount: projectIdSet.size,
       consultantCount: consultantsResult.rows.length
     });
 
@@ -289,136 +365,12 @@ module.exports = { allConsultants, pickedConsultants };`
   }
 });
 
-app.get("/api/get-projects", async (req, res) => {
-    const smId = req.query.sm_id; // Get sm_id from query parameters
-    const semester = req.query.project_semester;
-    
-    try{
-      //Fetch projects grouped by sm_id
-      const projectsQuery = `
-        SELECT 
-            project_id,
-            project_semester,
-            project_name,
-            client_name,
-            em_id,
-            sm_id,
-            pm_id,
-            sc1_id,
-            sc2_id
-        FROM 
-            projects
-        WHERE
-            sm_id = $1 AND
-            project_semester = $2
-
-      
-      `;
-      const projectsResult = await pgPool.query(projectsQuery, [smId, semester]);
-  
-      // Step 3: Handle response
-      if (projectsResult.rows.length === 0) {
-        return res.status(404).json({ message: "No current projects found for the given sm_id in the semester." });
-      }
-  
-      res.json({
-        message: "Current projects grouped by sm_id and semester",
-        data: projectsResult.rows,
-      });
-    } catch (error) {
-      console.error("Error executing query:", error);
-      res.status(500).json({ error: "Internal server error." });
-    }
-  });
-    
-app.get("/api/get-consultants", async (req, res) => {
-
-  try {
-    const projectsQuery =`
-      SELECT
-        project_id,
-      FROM
-        projects
-      WHERE
-        project_semester = $1
-    `;
-
-    const staffedConsultantQuery = `
-      SELECT 
-        user_id,
-      FROM 
-        consultant-projects
-      WHERE
-        project_id = ANY($1)
-
-    `;
-
-    const consultantsQuery = `
-      SELECT 
-        u.user_id,
-        u.name,
-        u.email,
-        u.curr_role,
-        u.gender,
-        u.race,
-        u.us_citizen,
-        u.residency,
-        u.first_gen,
-        u.netid,
-        c.status,
-        c.year,
-        c.major,
-        c.minor,
-        c.college,
-        c.availability_mon,
-        c.availability_tue,
-        c.availability_wed,
-        c.availability_thu,
-        c.availability_fri,
-        c.availability_sat,
-        c.availability_sun,
-        c.consultant_score,
-        c.semesters_in_ibc,
-        c.time_zone,
-        c.willing_to_travel,
-        c.week_before_finals_availability,
-        c.industry_interests,
-        c.functional_area_interests
-      FROM consultants c
-      JOIN users u ON c.user_id = u.user_id
-      WHERE c.status != 'Deferred'
-        AND u.curr_role IN ('NC', 'EC')
-        AND user_id NOT IN ($1);
-    `;
-
-    const curr_projects = await pgPool.query(projectsQuery, [semester]);
-    const projectIds = curr_projects.rows.map(row => row.project_id);
-
-    const staffed_consultants = await pgPool.query(staffedConsultantQuery, [projectIds]);
-    const staffedConsultantIds = staffed_consultants.rows.map(row => row.user_id);
-    
-    const result = await pgPool.query(consultantsQuery, [staffedConsultantIds]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "No consultants found matching criteria." });
-    }
-    
-    res.json({
-      message: "Consultant directory fetched successfully.",
-      data: result.rows,
-    });
-  } catch (error) {
-    console.error("Error fetching consultant directory:", error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
-
 // fetch history from google sheets.
 // iterate bottump up and ignore duplicates by consultantId
 // insert to project-consultant database
-app.get("/api/import-project-data", async (req, res) => {
+app.post("/api/import-project-data", async (req, res) => {
   
-  const SHEET_HISTORY_URL = "https://script.google.com/macros/s/AKfycbwEsuHzdJKr3SCLJD1CznxwoqcTOHXbJSAjcwViyJyoJom3mfPaWgxpFnxnPuOAUN55VQ/exec";
+  const SHEET_HISTORY_URL = process.env.SHEET_HISTORY_URL;
 
   try {
     console.log("Entering /api/import-project-data endpoint"); // Log at the start of the endpoint
@@ -434,6 +386,7 @@ app.get("/api/import-project-data", async (req, res) => {
     for (let i = rows.length - 1; i >= 0; i--) {
       console.log(`Processing row ${i}:`, rows[i]); // Debugging log for each row
       ({ consultantId, projectId, role } = rows[i]); // Update variables within the loop
+      if (!projectId || !consultantId || !role) continue; // Skip rows with missing data
       console.log(`Extracted values - consultantId: ${consultantId}, projectId: ${projectId}, role: ${role}`); // Debugging log for extracted values
 
       if (seen.has(consultantId)) {
@@ -469,5 +422,130 @@ registerSocketHandlers(io);
 // Start the server and listen on port 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🟢 Server running on port ${PORT}\nTest using this: http://localhost:3000`);
+  console.log(`🟢 Server running on port ${PORT}\nTest using this: ${process.env.BASE_API_URL}`);
 });
+
+// Deprecated endpoints, kept for reference
+// app.get("/api/get-projects", async (req, res) => {
+//   const smId = req.query.sm_id; // Get sm_id from query parameters
+//   const semester = req.query.project_semester;
+  
+//   try{
+//     //Fetch projects grouped by sm_id
+//     const projectsQuery = `
+//       SELECT 
+//           project_id,
+//           project_semester,
+//           project_name,
+//           client_name,
+//           em_id,
+//           sm_id,
+//           pm_id,
+//           sc1_id,
+//           sc2_id
+//       FROM 
+//           projects
+//       WHERE
+//           sm_id = $1 AND
+//           project_semester = $2
+
+    
+//     `;
+//     const projectsResult = await pgPool.query(projectsQuery, [smId, semester]);
+
+//     // Step 3: Handle response
+//     if (projectsResult.rows.length === 0) {
+//       return res.status(404).json({ message: "No current projects found for the given sm_id in the semester." });
+//     }
+
+//     res.json({
+//       message: "Current projects grouped by sm_id and semester",
+//       data: projectsResult.rows,
+//     });
+//   } catch (error) {
+//     console.error("Error executing query:", error);
+//     res.status(500).json({ error: "Internal server error." });
+//   }
+// });
+  
+// app.get("/api/get-consultants", async (req, res) => {
+
+// try {
+//   const projectsQuery =`
+//     SELECT
+//       project_id,
+//     FROM
+//       projects
+//     WHERE
+//       project_semester = $1
+//   `;
+
+//   const staffedConsultantQuery = `
+//     SELECT 
+//       user_id,
+//     FROM 
+//       consultant_projects
+//     WHERE
+//       project_id = ANY($1)
+
+//   `;
+
+//   const consultantsQuery = `
+//     SELECT 
+//       u.user_id,
+//       u.name,
+//       u.email,
+//       u.curr_role,
+//       u.gender,
+//       u.race,
+//       u.us_citizen,
+//       u.residency,
+//       u.first_gen,
+//       u.netid,
+//       c.status,
+//       c.year,
+//       c.major,
+//       c.minor,
+//       c.college,
+//       c.availability_mon,
+//       c.availability_tue,
+//       c.availability_wed,
+//       c.availability_thu,
+//       c.availability_fri,
+//       c.availability_sat,
+//       c.availability_sun,
+//       c.consultant_score,
+//       c.semesters_in_ibc,
+//       c.time_zone,
+//       c.willing_to_travel,
+//       c.week_before_finals_availability,
+//       c.industry_interests,
+//       c.functional_area_interests
+//     FROM consultants c
+//     JOIN users u ON c.user_id = u.user_id
+//     WHERE c.status != 'Deferred'
+//       AND u.curr_role IN ('NC', 'EC')
+//       AND user_id NOT IN ($1);
+//   `;
+
+//   const curr_projects = await pgPool.query(projectsQuery, [semester]);
+//   const projectIds = curr_projects.rows.map(row => row.project_id);
+
+//   const staffed_consultants = await pgPool.query(staffedConsultantQuery, [projectIds]);
+//   const staffedConsultantIds = staffed_consultants.rows.map(row => row.user_id);
+  
+//   const result = await pgPool.query(consultantsQuery, [staffedConsultantIds]);
+  
+//   if (result.rows.length === 0) {
+//     return res.status(404).json({ message: "No consultants found matching criteria." });
+//   }
+  
+//   res.json({
+//     message: "Consultant directory fetched successfully.",
+//     data: result.rows,
+//   });
+// } catch (error) {
+//   console.error("Error fetching consultant directory:", error);
+//   res.status(500).json({ error: "Internal server error." });
+// }
+// });

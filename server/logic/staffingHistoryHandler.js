@@ -26,7 +26,7 @@ const fetchWithRetry = async (url, options, retries = 3, timeout = 50000) => {
   };
   
 
-const url = "https://script.google.com/macros/s/AKfycbwEsuHzdJKr3SCLJD1CznxwoqcTOHXbJSAjcwViyJyoJom3mfPaWgxpFnxnPuOAUN55VQ/exec"
+const url = process.env.SHEET_HISTORY_URL
 async function postToGoogleSheet(data) {
     try {
         console.log("Posting to Google Sheet:", data);

@@ -124,6 +124,8 @@ socket.on('lobby update', (users) => {
 
 // Handle the start draft button click
 startBtn.onclick = () => {
+    startBtn.disabled = true;
+    startBtn.textContent = "Starting draft...";
     socket.emit('start draft', { project_semester: currentSemester }); // Emit a 'start draft' event to the server
 };
 
@@ -132,13 +134,23 @@ socket.on('registration rejected', (message) => {
     alert('Registration error: ' + message);
 });
 
+// When last pick is made, show the finalizing message
+socket.on('draft finalizing', (message) => {
+    status.textContent = message;
+    pickBtn.disabled = true;
+    deferBtn.disabled = true;
+    // Optional: show spinner, disable consultant list, etc.
+  });
+  
 socket.on('endDraft', (message) => {
+    status.textContent = "✅ Draft Complete";
     console.log('Received endDraft event from server:', message);
     alert(message); 
 
     pickBtn.disabled = true;
     deferBtn.disabled = true;
     startBtn.disabled = true; 
+    endDraftBtn.textContent = "Draft Ended";
 
      document.querySelectorAll('#consultants li').forEach(li => {
         li.onclick = null; // Disable clicking consultants
@@ -150,6 +162,9 @@ socket.on('endDraft', (message) => {
 
 // Handle the start of the draft
 socket.on('draft started', () => {
+    startBtn.textContent = "Start Draft";
+    startBtn.disabled = false;
+    endDraftBtn.disabled = false; // Enable the end draft button
     // Only show the draft interface if the user is already logged in
     if (currentUser) {
         lobby.style.display = 'none'; // Hide the lobby
@@ -379,9 +394,9 @@ function renderConsultants() {
     Object.values(allConsultants)
     .filter(consultant => {
         const matchesMajor = !activeFilters.major || 
-            consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase());
-        const matchesYear = activeFilters.years.has(consultant.Year);
-        const matchesRole = activeFilters.roles.has(consultant.Role);
+            (consultant.Major && consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase()));
+        const matchesYear = consultant.Year && activeFilters.years.has(consultant.Year);
+        const matchesRole = consultant.Role && activeFilters.roles.has(consultant.Role);
         
         return matchesMajor && matchesYear && matchesRole;
     })
@@ -470,26 +485,26 @@ function showConsultantDetails(consultant) {
             <section>
                 <h3>Basic Information</h3>
                 <p><strong>UserID:</strong> ${consultant.UserID}</p>
-                <p><strong>Email:</strong> ${consultant.Email}</p>
-                <p><strong>Role:</strong> ${consultant.Role}</p>
-                <p><strong>Major:</strong> ${consultant.Major}</p>
-                <p><strong>Year:</strong> ${consultant.Year}</p>
-                <p><strong>IBC Experience:</strong> ${consultant.Num_SemestersInIBC} semesters</p>
-                <p><strong>Score:</strong> ${consultant.ConsultantScore}</p>
+                <p><strong>Email:</strong> ${consultant.Email || 'N/A'}</p>
+                <p><strong>Role:</strong> ${consultant.Role || 'N/A'}</p>
+                <p><strong>Major:</strong> ${consultant.Major || 'N/A'}</p>
+                <p><strong>Year:</strong> ${consultant.Year || 'N/A'}</p>
+                <p><strong>IBC Experience:</strong> ${consultant.Num_SemestersInIBC || 'N/A'} semesters</p>
+                <p><strong>Score:</strong> ${consultant.ConsultantScore || 'N/A'}</p>
             </section>
 
             <section>
                 <h3>Availability</h3>
                 ${createTimeGrid(consultant)}
-                <p><strong>Time Zone:</strong> ${consultant.TimeZone}</p>
-                <p><strong>Willing to Travel:</strong> ${consultant.WillingToTravel}</p>
-                <p><strong>Finals Week:</strong> ${consultant.WeekBeforeFinalsAvailability}</p>
+                <p><strong>Time Zone:</strong> ${consultant.TimeZone || 'N/A'}</p>
+                <p><strong>Willing to Travel:</strong> ${consultant.WillingToTravel || 'N/A'}</p>
+                <p><strong>Finals Week:</strong> ${consultant.WeekBeforeFinalsAvailability || 'N/A'}</p>
             </section>
 
             <section>
                 <h3>Interests</h3>
-                <p><strong>Industry:</strong> ${consultant.IndustryInterests}</p>
-                <p><strong>Functional Areas:</strong> ${consultant.FunctionalAreaInterests}</p>
+                <p><strong>Industry:</strong> ${consultant.IndustryInterests || 'N/A'}</p>
+                <p><strong>Functional Areas:</strong> ${consultant.FunctionalAreaInterests || 'N/A'}</p>
             </section>
         </div>
     `;
@@ -511,7 +526,7 @@ function showConsultantDetails(consultant) {
 // Handle the pick button click
 pickBtn.onclick = () => {
     if (currentConsultantId) {
-        const projectId = projectSelect.value; // Get the selected project ID
+        const projectId = projectSelect.value; // Get the project ID
         const consultant = Object.values(allConsultants).find(c => c.UserID === currentConsultantId); // Find the selected consultant
 
         if (!consultant) return; // Exit if the consultant is not found
@@ -552,6 +567,7 @@ leaveDraftBtn.onclick = () => {
 endDraftBtn.onclick = () => {
     if (confirm('Are you sure you want to end the draft?')) {
         socket.emit('end draft');
+        endDraftBtn.disabled = true;
+        endDraftBtn.textContent = "Ending draft...";
     }
-
 };
