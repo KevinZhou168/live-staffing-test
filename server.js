@@ -281,7 +281,7 @@ app.get("/api/start-draft", async (req, res) => {
       SELECT *
       FROM consultants c
       JOIN users u ON c.user_id = u.user_id
-      WHERE c.status != 'Deferred'
+      WHERE (c.status = 'Returning' OR c.status = 'New')
         AND u.curr_role IN ('NC', 'EC')
         AND u.user_id != ALL($1::int[])
     `, [intStaffedIds]);

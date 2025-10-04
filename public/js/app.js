@@ -402,11 +402,29 @@ function renderConsultants() {
     // Filter and render consultants
     Object.values(allConsultants)
     .filter(consultant => {
-        const matchesMajor = !activeFilters.major || 
-            (consultant.Major && consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase()));
-        const matchesYear = consultant.Year && activeFilters.years.has(consultant.Year);
-        const matchesRole = consultant.Role && activeFilters.roles.has(consultant.Role);
+        // const matchesMajor = !activeFilters.major || 
+        //     (consultant.Major && consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase()));
+        // const matchesYear = consultant.Year && activeFilters.years.has(consultant.Year);
+        // const matchesRole = consultant.Role && activeFilters.roles.has(consultant.Role);
         
+        // return matchesMajor && matchesYear && matchesRole;
+        const qMajor = (activeFilters.major || "").trim().toLowerCase();
+
+        // normalize fields
+        const major = (consultant.Major ?? "").toString().trim().toLowerCase();
+        const year  = (consultant.Year ?? "").toString().trim();
+        const role  = (consultant.Role ?? "").toString().trim();
+
+        // Major: if no query, always match.
+        // If query exists, "Unknown" or empty major is treated as match too.
+        const matchesMajor = !qMajor || major === "unknown" || major === "" || major.includes(qMajor);
+
+        // Year: if missing or explicitly "Unknown", treat as match.
+        const matchesYear = !year || year.toLowerCase() === "unknown" || activeFilters.years.has(year);
+
+        // Role: if missing or "Unknown", treat as match.
+        const matchesRole = !role || role.toLowerCase() === "unknown" || activeFilters.roles.has(role);
+
         return matchesMajor && matchesYear && matchesRole;
     })
     .forEach(c => {
