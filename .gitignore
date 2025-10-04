@@ -1,3 +1,5 @@
 node_modules
 .env
 command.txt
+service-account.json
+startup-script.sh
