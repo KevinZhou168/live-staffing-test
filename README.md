@@ -1,6 +1,6 @@
 # IBC OrgOps — Staffing (OrgOps) Platform
 
-This repository contains the initial OrgOps staffing interface for IBC (formerly the "live-staffing-test" project). It provides a real-time drafting UI and backend to coordinate Student Managers (SMs) as they staff consultants into projects. The platform is intentionally lightweight and easy to run locally while being ready to scale and integrate with production services (Postgres, Google Sheets, Cloud SQL, etc.).
+This repository contains the initial OrgOps staffing interface for Illinois Business Consulting (IBC). It provides a real-time drafting UI and backend to coordinate Senior Managers (SMs) as they staff consultants into projects every semester. The platform is intentionally lightweight and easy to run locally while being ready to scale and integrate with production services (Postgres, Google Sheets, Cloud SQL, etc.).
 
 Key goals in this repo:
 - Provide a live, turn-based draft for staffing projects.
