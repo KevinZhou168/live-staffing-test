@@ -161,6 +161,7 @@ socket.on('endDraft', (message) => {
     deferBtn.disabled = true;
     startBtn.disabled = true; 
     endDraftBtn.textContent = "Draft Ended";
+    endDraftBtn.disabled = true;
 
      document.querySelectorAll('#consultants li').forEach(li => {
         li.onclick = null; // Disable clicking consultants
