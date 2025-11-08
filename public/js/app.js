@@ -160,6 +160,7 @@ socket.on('endDraft', (message) => {
     pickBtn.disabled = true;
     deferBtn.disabled = true;
     startBtn.disabled = true; 
+    leaveDraftBtn.disabled = true;
     endDraftBtn.textContent = "Draft Ended";
     endDraftBtn.disabled = true;
 

@@ -9,6 +9,22 @@ let originalDraftOrder = [];
 let turnOwnerUserIdAtDisconnect = null;
 const disconnectedSMs = new Map();
 
+function reset() {
+
+  drafters.splice(0, drafters.length);
+  draftedConsultants.clear();
+  disconnectedSMs.clear();
+  originalDraftOrder.splice(0, originalDraftOrder.length);
+
+  currentPrivilegedUserIndex = 0;
+  movingForward = true;
+  isSecondTurn = false;
+  isInitialTurn = true;
+  isDraftStarted = false;
+  turnOwnerUserIdAtDisconnect = null;
+  
+}
+
 module.exports = {
   draftedConsultants,
   drafters,
@@ -20,4 +36,5 @@ module.exports = {
   originalDraftOrder,
   turnOwnerUserIdAtDisconnect,
   disconnectedSMs,
+  reset,
 };
