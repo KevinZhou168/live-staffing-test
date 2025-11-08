@@ -1,13 +1,13 @@
-// Initialize the Socket.IO client
+ // Initialize the Socket.IO client
 // const socket = io();
-// const socket = io(window.ENV.BASE_SOCKET_URL, {
-//     transports: ['websocket'],  // Enforce websocket only
-//     upgrade: false              // Disable fallback to polling
-// });
-const socket = io(window.BASE_SOCKET_URL, {
-    transports: ['websocket'],
-    upgrade: false
-  });
+const socket = io(window.ENV.BASE_SOCKET_URL, {
+    transports: ['websocket'],  // Enforce websocket only
+    upgrade: false              // Disable fallback to polling
+});
+// const socket = io(window.BASE_SOCKET_URL, {
+//     transports: ['websocket'],
+//     upgrade: false
+//   });
   
 
 // Add a state tracking object
@@ -121,15 +121,73 @@ socket.on('registration confirmed', (user) => {
     lobby.style.display = 'block'; // Show the lobby
 });
 
-// Update the lobby when the list of users changes
 socket.on('lobby update', (users) => {
-    userList.innerHTML = ''; // Clear the current user list
-    users.forEach(u => {
-        const li = document.createElement('li');
-        li.textContent = u.name + (u.id === currentUser.id ? ' (You)' : ''); // Highlight the current user
-        userList.appendChild(li);
-    });
+  userList.innerHTML = ''; // Clear list
+
+  users.forEach(u => {
+    const li = document.createElement('li');
+    li.style.display = 'flex';
+    li.style.justifyContent = 'space-between';
+    li.style.alignItems = 'center';
+    li.style.listStyleType = 'none';
+    li.style.margin = '4px 0';
+    li.style.padding = '4px 8px';
+    li.style.border = '1px solid #ddd';
+    li.style.borderRadius = '6px';
+    li.style.backgroundColor = '#fafafa';
+    li.dataset.userid = u.userId;
+
+    // Name label
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = u.name + (u.userId === currentUser.userId ? ' (You)' : '');
+    li.appendChild(nameSpan);
+
+    // Kick button
+    if (u.userId !== currentUser.userId) {
+      const kickBtn = document.createElement('button');
+      kickBtn.textContent = 'Kick';
+      kickBtn.style.fontSize = '10px';
+      kickBtn.style.padding = '1px 5px';
+      kickBtn.style.marginLeft = '6px';
+      kickBtn.style.borderRadius = '3px';
+      kickBtn.style.backgroundColor = '#B23A2C';
+      kickBtn.style.color = '#fff';
+      kickBtn.style.border = 'none';
+      kickBtn.style.cursor = 'pointer';
+      kickBtn.style.height = '20px';
+      kickBtn.style.lineHeight = '1';
+      kickBtn.onclick = () => {
+        if (confirm(`Kick ${u.name}?`)) {
+          socket.emit('kick user', { userId: u.userId });
+        }
+      };
+
+      li.appendChild(kickBtn);
+    }
+
+    userList.appendChild(li);
+  });
 });
+
+
+
+
+socket.on('user kicked', (kickedUserId) => {
+  // If THIS user was kicked
+  if (currentUser && currentUser.userId === kickedUserId) {
+    alert('You have been removed from the lobby.');
+    lobby.style.display = 'none';
+    draftInterface.style.display = 'none';
+    loginModal.style.display = 'flex';
+    currentUser = null;
+  } else {
+    const el = document.querySelector(`[data-userid='${kickedUserId}']`);
+    if (el) el.remove();
+  }
+});
+
+
+
 
 // Handle the start draft button click
 startBtn.onclick = () => {
@@ -240,14 +298,43 @@ socket.on('draft status update', (smProjectsMap) => {
     renderConsultants(); // Re-render the consultants
 });
 
-// Update the privilege status
 socket.on('privilege update', (user) => {
-    hasPrivilege = user.id === currentUser.id; // Check if the current user has the privilege
-    status.textContent = hasPrivilege ? '✅ Your Turn to Pick' : `🕒 ${user.name}'s Turn`; // Update the status message
-    pickBtn.disabled = !hasPrivilege; // Enable or disable the pick button
-    deferBtn.disabled = !hasPrivilege; // Enable or disable the defer button
-    renderConsultants(); // Re-render the consultants
+  hasPrivilege = user.id === currentUser.id;
+
+  // Build the label first
+  const label = document.createElement('span');
+  label.textContent = hasPrivilege
+    ? '✅ Your Turn to Pick'
+    : `🕒 ${user.name}'s Turn`;
+
+  // Replace everything inside the status node (prevents later overwrites)
+  status.replaceChildren(label);
+
+  // If it's someone else's turn, show a super-small inline Kick next to their name
+  if (!hasPrivilege && user.userId !== currentUser.userId) {
+    const kickBtn = document.createElement('button');
+    kickBtn.className = 'kick-inline';
+    kickBtn.textContent = 'Kick';
+    kickBtn.title = `Remove ${user.name}`;
+
+    kickBtn.onclick = () => {
+      if (confirm(`Kick ${user.name} from the draft?`)) {
+        socket.emit('kick user', { userId: user.userId });
+      }
+    };
+
+    // add a tiny gap then the button
+    const gap = document.createTextNode(' ');
+    status.append(gap, kickBtn);
+  }
+
+  // Keep the rest of your existing logic
+  pickBtn.disabled = !hasPrivilege;
+  deferBtn.disabled = !hasPrivilege;
+  renderConsultants();
 });
+
+
 
 // Render the list of projects in the UI
 function renderProjects() {

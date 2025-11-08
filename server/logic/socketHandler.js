@@ -134,6 +134,58 @@ function registerSocketHandlers(io) {
       io.emit('lobby update', draftState.drafters);
     });
 
+socket.on('kick user', ({ userId }) => {
+  console.log(`[Kick] Request to remove userId=${userId}`);
+
+  const idx = draftState.drafters.findIndex(d => d.userId === userId);
+  if (idx === -1) {
+    console.log('[Kick] No matching user found.');
+    return;
+  }
+
+  const removed = draftState.drafters.splice(idx, 1)[0];
+  if (!removed) return;
+
+  console.log(`[Kick] ${removed.name} removed from draft.`);
+
+  // Mark as kicked and disconnect
+  removed.wasKicked = true;
+  const sock = io.sockets.sockets.get(removed.id);
+  if (sock) {
+    sock.wasKicked = true;
+    sock.disconnect(true);
+  }
+
+  // If we’re in the middle of a draft, handle turn logic
+  if (draftState.isDraftStarted) {
+    // Adjust current turn if the removed user was up next
+    if (idx === draftState.currentPrivilegedUserIndex) {
+      console.log(`[Kick] ${removed.name} was current turn — rotating turn.`);
+      // Clamp index so we don’t go out of range
+      if (draftState.currentPrivilegedUserIndex >= draftState.drafters.length) {
+        draftState.currentPrivilegedUserIndex = 0;
+      }
+      rotatePrivileges(io);
+    } else if (idx < draftState.currentPrivilegedUserIndex) {
+      // If the removed user was before the current turn, shift index left
+      draftState.currentPrivilegedUserIndex = Math.max(
+        0,
+        draftState.currentPrivilegedUserIndex - 1
+      );
+    }
+  }
+
+  // Notify all clients
+  io.emit('system message', `${removed.name} was kicked from the draft.`);
+  io.emit('user kicked', userId);
+  io.emit('lobby update', draftState.drafters);
+  emitDraftStatus(io);
+});
+
+
+
+
+
     /**
      * Event: 'start draft'
      * Starts the draft process if conditions are met.
@@ -420,10 +472,17 @@ function registerSocketHandlers(io) {
      * Event: 'disconnect'
      * Handles a client disconnecting from the server.
      */
-    socket.on('disconnect', () => {
-      const index = draftState.drafters.findIndex((u) => u.id === socket.id);
-      if (index !== -1) {
-        const drafter = draftState.drafters[index];
+   socket.on('disconnect', () => {
+  if (socket.wasKicked) {
+    console.log(`[Disconnect] Skipping kicked user ${socket.id}`);
+    return;
+  }
+
+
+  const index = draftState.drafters.findIndex((u) => u.id === socket.id);
+  if (index !== -1) {
+    const drafter = draftState.drafters[index];
+
 
         if (draftState.isDraftStarted) {
           // Similar to leave lobby, but due to disconnection

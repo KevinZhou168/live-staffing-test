@@ -480,3 +480,19 @@ button:disabled {
     color: #666;
     margin-top: 4px;
 }
+/* Small inline Kick button for draft status */
+.kick-inline {
+  font-size: 10px;
+  padding: 0;
+  margin-left: 6px;
+  background: none;
+  color: red;
+  border: none;
+  cursor: pointer;
+  line-height: 1;
+  text-decoration: underline;
+}
+
+.kick-inline:hover {
+  color: darkred;
+}
