@@ -480,19 +480,28 @@ button:disabled {
     color: #666;
     margin-top: 4px;
 }
-/* Small inline Kick button for draft status */
-.kick-inline {
-  font-size: 10px;
-  padding: 0;
+/* Small red Kick button (consistent in lobby + draft) */
+.kick-btn {
+  font-size: 11px;
+  font-weight: 600;
+  width: 50px;                /* ✅ fix width so it’s not wide */
+  height: 22px;               /* ✅ keep the nice tallness */
   margin-left: 6px;
-  background: none;
-  color: red;
+  padding: 0;
+  background-color: #B22222;  /* dark red */
+  color: white;
   border: none;
+  border-radius: 4px;
   cursor: pointer;
   line-height: 1;
-  text-decoration: underline;
+  text-align: center;
+  display: inline-flex;       /* inline but flexible alignment */
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  transition: background-color 0.2s ease;
 }
 
-.kick-inline:hover {
-  color: darkred;
+.kick-btn:hover {
+  background-color: #8B0000;
 }

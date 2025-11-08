@@ -142,28 +142,19 @@ socket.on('lobby update', (users) => {
     nameSpan.textContent = u.name + (u.userId === currentUser.userId ? ' (You)' : '');
     li.appendChild(nameSpan);
 
-    // Kick button
-    if (u.userId !== currentUser.userId) {
-      const kickBtn = document.createElement('button');
-      kickBtn.textContent = 'Kick';
-      kickBtn.style.fontSize = '10px';
-      kickBtn.style.padding = '1px 5px';
-      kickBtn.style.marginLeft = '6px';
-      kickBtn.style.borderRadius = '3px';
-      kickBtn.style.backgroundColor = '#B23A2C';
-      kickBtn.style.color = '#fff';
-      kickBtn.style.border = 'none';
-      kickBtn.style.cursor = 'pointer';
-      kickBtn.style.height = '20px';
-      kickBtn.style.lineHeight = '1';
-      kickBtn.onclick = () => {
-        if (confirm(`Kick ${u.name}?`)) {
-          socket.emit('kick user', { userId: u.userId });
-        }
-      };
-
-      li.appendChild(kickBtn);
+   // Kick button
+if (u.userId !== currentUser.userId) {
+  const kickBtn = document.createElement('button');
+  kickBtn.className = 'kick-btn'; // use shared CSS
+  kickBtn.textContent = 'Kick';
+  kickBtn.onclick = () => {
+    if (confirm(`Kick ${u.name}?`)) {
+      socket.emit('kick user', { userId: u.userId });
     }
+  };
+  li.appendChild(kickBtn);
+}
+
 
     userList.appendChild(li);
   });
@@ -310,23 +301,20 @@ socket.on('privilege update', (user) => {
   // Replace everything inside the status node (prevents later overwrites)
   status.replaceChildren(label);
 
-  // If it's someone else's turn, show a super-small inline Kick next to their name
-  if (!hasPrivilege && user.userId !== currentUser.userId) {
-    const kickBtn = document.createElement('button');
-    kickBtn.className = 'kick-inline';
-    kickBtn.textContent = 'Kick';
-    kickBtn.title = `Remove ${user.name}`;
+ // If it's someone else's turn, show small red Kick next to their name
+if (!hasPrivilege && user.userId !== currentUser.userId) {
+  const kickBtn = document.createElement('button');
+  kickBtn.className = 'kick-btn'; // same shared CSS
+  kickBtn.textContent = 'Kick';
+  kickBtn.title = `Remove ${user.name}`;
+  kickBtn.onclick = () => {
+    if (confirm(`Kick ${user.name} from the draft?`)) {
+      socket.emit('kick user', { userId: user.userId });
+    }
+  };
+  status.append(' ', kickBtn);
+}
 
-    kickBtn.onclick = () => {
-      if (confirm(`Kick ${user.name} from the draft?`)) {
-        socket.emit('kick user', { userId: user.userId });
-      }
-    };
-
-    // add a tiny gap then the button
-    const gap = document.createTextNode(' ');
-    status.append(gap, kickBtn);
-  }
 
   // Keep the rest of your existing logic
   pickBtn.disabled = !hasPrivilege;
