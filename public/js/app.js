@@ -29,6 +29,7 @@ let hasPrivilege = false; // Whether the current user has the privilege to pick
 let currentSemester = null;
 // Initialize active filters for the consultant list
 let activeFilters = {
+    name: '',
     major: '',
     years: new Set(['Freshman', 'Sophomore', 'Junior', 'Senior']),
     roles: new Set(['NC', 'EC'])
@@ -159,7 +160,9 @@ socket.on('endDraft', (message) => {
     pickBtn.disabled = true;
     deferBtn.disabled = true;
     startBtn.disabled = true; 
+    leaveDraftBtn.disabled = true;
     endDraftBtn.textContent = "Draft Ended";
+    endDraftBtn.disabled = true;
 
      document.querySelectorAll('#consultants li').forEach(li => {
         li.onclick = null; // Disable clicking consultants
@@ -344,6 +347,14 @@ function renderConsultants() {
     filterSection.className = 'filter-section';
     filterSection.innerHTML = `
         <div class="filter-controls">
+            <div class="filter-group name-filter">
+                <div class="filter-title">Name</div>
+                <input type="text" 
+                    id="name-filter" 
+                    placeholder="Type and press Enter..." 
+                    value="${activeFilters.name || ''}"
+                    class="filter-input">
+            </div>
             <div class="filter-group major-filter">
                 <div class="filter-title">Major</div>
                 <input type="text" 
@@ -408,12 +419,18 @@ function renderConsultants() {
         // const matchesRole = consultant.Role && activeFilters.roles.has(consultant.Role);
         
         // return matchesMajor && matchesYear && matchesRole;
+        const qName  = (activeFilters.name || "").trim().toLowerCase();
         const qMajor = (activeFilters.major || "").trim().toLowerCase();
 
         // normalize fields
+        const name  = (consultant.Name ?? "").toString().trim().toLowerCase();
         const major = (consultant.Major ?? "").toString().trim().toLowerCase();
         const year  = (consultant.Year ?? "").toString().trim();
         const role  = (consultant.Role ?? "").toString().trim();
+
+        // Name: if no query, always match.
+        // If query exists, "Unknown" or empty name is treated as match too.
+        const matchesName = !qName || name === "unknown" || name === "" || name.includes(qName);
 
         // Major: if no query, always match.
         // If query exists, "Unknown" or empty major is treated as match too.
@@ -425,7 +442,7 @@ function renderConsultants() {
         // Role: if missing or "Unknown", treat as match.
         const matchesRole = !role || role.toLowerCase() === "unknown" || activeFilters.roles.has(role);
 
-        return matchesMajor && matchesYear && matchesRole;
+        return matchesName && matchesMajor && matchesYear && matchesRole;
     })
     .forEach(c => {
         const card = document.createElement('div');
@@ -461,6 +478,13 @@ function renderConsultants() {
     consultantList.appendChild(cardsContainer);
 
     // Add event listeners for filters
+    document.getElementById('name-filter').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            activeFilters.name = e.target.value;
+            renderConsultants();
+        }
+    });
+
     document.getElementById('major-filter').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             activeFilters.major = e.target.value;

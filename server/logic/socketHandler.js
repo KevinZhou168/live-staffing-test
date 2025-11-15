@@ -241,8 +241,9 @@ function registerSocketHandlers(io) {
       io.emit('endDraft', 'All picks have been made. Ending draft.');
       draftState.isDraftStarted = false;
 
+      // Kick all members and reset draft state
+      draftState.reset();
 
-      // draftState.isDraftStarted = false;
     })
 
     /**

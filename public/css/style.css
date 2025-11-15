@@ -100,7 +100,9 @@ button {
 }
 
 #pick-btn:disabled,
-#defer-btn:disabled {
+#defer-btn:disabled,
+#leave-draft:disabled,
+#end-draft:disabled {
     background-color: #ccc !important;
     cursor: not-allowed;
 }
