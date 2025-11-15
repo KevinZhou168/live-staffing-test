@@ -1,6 +1,6 @@
  // Initialize the Socket.IO client
 // const socket = io();
-const socket = io(window.ENV.BASE_SOCKET_URL, {
+const socket = io(window.BASE_SOCKET_URL, {
     transports: ['websocket'],  // Enforce websocket only
     upgrade: false              // Disable fallback to polling
 });
