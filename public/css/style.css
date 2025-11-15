@@ -482,3 +482,28 @@ button:disabled {
     color: #666;
     margin-top: 4px;
 }
+/* Small red Kick button (consistent in lobby + draft) */
+.kick-btn {
+  font-size: 11px;
+  font-weight: 600;
+  width: 50px;                /* ✅ fix width so it’s not wide */
+  height: 22px;               /* ✅ keep the nice tallness */
+  margin-left: 6px;
+  padding: 0;
+  background-color: #B22222;  /* dark red */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  text-align: center;
+  display: inline-flex;       /* inline but flexible alignment */
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  transition: background-color 0.2s ease;
+}
+
+.kick-btn:hover {
+  background-color: #8B0000;
+}
