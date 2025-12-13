@@ -1,14 +1,68 @@
- // Initialize the Socket.IO client
-// const socket = io();
-const socket = io(window.BASE_SOCKET_URL, {
-    transports: ['websocket'],  // Enforce websocket only
-    upgrade: false              // Disable fallback to polling
+const socket = io(window.location.origin, {
+  // Let it use default transports (polling + websocket)
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 500,
+  reconnectionDelayMax: 3000,
+  timeout: 45000,
+  forceNew: false,
+  multiplex: true
 });
-// const socket = io(window.BASE_SOCKET_URL, {
-//     transports: ['websocket'],
-//     upgrade: false
-//   });
+
+console.log('app.js loaded from:', window.location.href);
+console.log('BASE_SOCKET_URL =', window.BASE_SOCKET_URL);
+
   
+// Handle reconnection events
+socket.on('reconnect', (attemptNumber) => {
+    console.log(`Reconnected to server after ${attemptNumber} attempts`);
+    if (currentUser && currentSemester) {
+        // Re-register with the server
+        socket.emit('register sm', { 
+            UserID: currentUser.userId, 
+            joinCode: currentSemester 
+        });
+        status.textContent = '✅ Reconnected successfully';
+        status.style.color = '#28a745';
+    }
+});
+
+socket.on('reconnect_attempt', (attemptNumber) => {
+    console.log(`Attempting to reconnect... (attempt ${attemptNumber})`);
+    if (status) {
+        status.textContent = `⚠️ Connection lost. Reconnecting... (attempt ${attemptNumber})`;
+        status.style.color = '#ffc107';
+    }
+});
+
+socket.on('reconnect_error', (error) => {
+    console.error('Reconnection failed:', error);
+    if (status) {
+        status.textContent = '❌ Connection lost. Retrying...';
+        status.style.color = '#dc3545';
+    }
+});
+
+socket.on('reconnect_failed', () => {
+    console.error('Failed to reconnect after maximum attempts');
+    if (status) {
+        status.textContent = '❌ Connection failed. Please refresh the page.';
+        status.style.color = '#dc3545';
+    }
+});
+
+socket.on('disconnect', (reason) => {
+    console.log('Disconnected from server:', reason);
+    if (status && reason === 'io server disconnect') {
+        // Server initiated disconnect - might be intentional
+        status.textContent = '⚠️ Disconnected by server';
+        status.style.color = '#ffc107';
+    } else if (status && reason !== 'io client disconnect') {
+        // Unexpected disconnect - will auto-reconnect
+        status.textContent = '⚠️ Connection lost. Reconnecting...';
+        status.style.color = '#ffc107';
+    }
+});
 
 // Add a state tracking object
 const dataState = {
@@ -143,26 +197,21 @@ socket.on('lobby update', (users) => {
     nameSpan.textContent = u.name + (u.userId === currentUser.userId ? ' (You)' : '');
     li.appendChild(nameSpan);
 
-   // Kick button
-if (u.userId !== currentUser.userId) {
-  const kickBtn = document.createElement('button');
-  kickBtn.className = 'kick-btn'; // use shared CSS
-  kickBtn.textContent = 'Kick';
-  kickBtn.onclick = () => {
-    if (confirm(`Kick ${u.name}?`)) {
-      socket.emit('kick user', { userId: u.userId });
+    // Kick button
+    if (u.userId !== currentUser.userId) {
+      const kickBtn = document.createElement('button');
+      kickBtn.className = 'kick-btn'; // use shared CSS
+      kickBtn.textContent = 'Kick';
+      kickBtn.onclick = () => {
+          if (confirm(`Kick ${u.name}?`)) {
+              socket.emit('kick user', { userId: u.userId });
+          }
+      };
+      li.appendChild(kickBtn);
     }
-  };
-  li.appendChild(kickBtn);
-}
-
-
     userList.appendChild(li);
   });
 });
-
-
-
 
 socket.on('user kicked', (kickedUserId) => {
   // If THIS user was kicked
@@ -178,9 +227,6 @@ socket.on('user kicked', (kickedUserId) => {
   }
 });
 
-
-
-
 // Handle the start draft button click
 startBtn.onclick = () => {
     startBtn.disabled = true;
@@ -190,6 +236,7 @@ startBtn.onclick = () => {
 
 // Add handler for registration rejection
 socket.on('registration rejected', (message) => {
+    console.log('[frontend] registration rejected payload:', message);
     alert('Registration error: ' + message);
 });
 
@@ -216,10 +263,7 @@ socket.on('endDraft', (message) => {
      document.querySelectorAll('#consultants li').forEach(li => {
         li.onclick = null; // Disable clicking consultants
     });
-
-
 });
-
 
 // Handle the start of the draft
 socket.on('draft started', () => {
@@ -276,6 +320,7 @@ socket.on('all consultants', (consultants) => {
 
 // Update the draft status
 socket.on('draft status update', (smProjectsMap) => {
+    console.log('[frontend] draft status update received', smProjectsMap);
     drafted.clear(); // Clear the set of drafted consultants
     assignedProjects = smProjectsMap[currentUser.userId] || {}; // Update the user's projects
     Object.values(smProjectsMap).forEach(projects => {
@@ -317,15 +362,11 @@ if (!hasPrivilege && user.userId !== currentUser.userId) {
   };
   status.append(' ', kickBtn);
 }
-
-
   // Keep the rest of your existing logic
   pickBtn.disabled = !hasPrivilege;
   deferBtn.disabled = !hasPrivilege;
   renderConsultants();
 });
-
-
 
 // Render the list of projects in the UI
 function renderProjects() {
@@ -488,12 +529,6 @@ function renderConsultants() {
     // Filter and render consultants
     Object.values(allConsultants)
     .filter(consultant => {
-        // const matchesMajor = !activeFilters.major || 
-        //     (consultant.Major && consultant.Major.toLowerCase().includes(activeFilters.major.toLowerCase()));
-        // const matchesYear = consultant.Year && activeFilters.years.has(consultant.Year);
-        // const matchesRole = consultant.Role && activeFilters.roles.has(consultant.Role);
-        
-        // return matchesMajor && matchesYear && matchesRole;
         const qName  = (activeFilters.name || "").trim().toLowerCase();
         const qMajor = (activeFilters.major || "").trim().toLowerCase();
 

@@ -3,3 +3,5 @@ node_modules
 command.txt
 service-account.json
 startup-script.sh
+Dockerfile
+.dockerignore

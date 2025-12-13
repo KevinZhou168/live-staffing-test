@@ -29,7 +29,11 @@ const io = require('socket.io')(server, {
   cors: {
     origin: process.env.FRONTEND_ORIGIN || "*",  // in dev, "*" is fine
     methods: ["GET", "POST"]
-  }
+  },
+  pingTimeout: 60000,     // 60 seconds before considering connection dead
+  pingInterval: 25000,    // Send ping every 25 seconds
+  upgradeTimeout: 30000,  // 30 seconds for transport upgrade
+  connectTimeout: 45000   // 45 seconds for initial connection
 });
 
 // Serve static files from the 'public' directory
@@ -42,19 +46,68 @@ app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'public/index.html'));
 });
 
-// No need to re-establish pgPool if we have db.js
-// const pgUrl = `postgres://${process.env.PG_USER}` +
-//               `:${process.env.PG_PASSWORD}` +
-//               `@${process.env.PG_HOST}` +
-//               `:${process.env.PG_PORT}` +
-//               `/${process.env.PG_DB}`;
-// const pgPool = new Pool({ connectionString: pgUrl });
-
+// Establich database conection pool
 const pgPool = require('./db.js');
+
+// Some logs to verify we're using the right db
+console.log('DB CONFIG AT STARTUP:');
+console.log('  PG_HOST:', process.env.PG_HOST);
+console.log('  PG_PORT:', process.env.PG_PORT);
+console.log('  PG_DB:', process.env.PG_DB);
+
+
+/**
+ * Background function to write data files and post to Google Sheets
+ * This runs asynchronously to avoid blocking the main request
+ * @param {Object} smProjectsMap - Projects mapped by SM
+ * @param {Object} allConsultants - All consultant data
+ * @param {Object} allSMs - All SM data
+ * @param {Object} allPM - All PM data
+ * @param {Object} allSC - All SC data
+ */
+async function writeDataFilesAndPostToSheets(smProjectsMap, allConsultants, allSMs, allPM, allSC) {
+  try {
+    // Post to Google Sheets first (can fail without breaking the draft)
+    await postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC })
+      .catch(err => console.error('[Non-critical] Google Sheets post failed:', err));
+
+    // Write all files in parallel
+    const fileWrites = [
+      fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'projects.js'),
+        `const smProjectsMap = ${JSON.stringify(smProjectsMap, null, 2)};\n\nmodule.exports = smProjectsMap;`
+      ),
+      fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'consultants.js'),
+        `const allConsultants = ${JSON.stringify(allConsultants, null, 2)};\n\nconst pickedConsultants = [];\n\nmodule.exports = { allConsultants, pickedConsultants };`
+      ),
+      fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'smData.js'),
+        `const allSMs = ${JSON.stringify(allSMs, null, 2)};\n\nmodule.exports = allSMs;`
+      ),
+      fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'pmData.js'),
+        `const allPM = ${JSON.stringify(allPM, null, 2)};\n\nmodule.exports = allPM;`
+      ),
+      fs.promises.writeFile(
+        path.join(__dirname, 'server', 'data', 'scData.js'),
+        `const allSC = ${JSON.stringify(allSC, null, 2)};\n\nmodule.exports = allSC;`
+      )
+    ];
+
+    await Promise.all(fileWrites);
+    console.log('✅ Background file writes completed successfully');
+  } catch (err) {
+    console.error('❌ Error in background operations:', err);
+    throw err;
+  }
+}
 
 app.get("/api/login-validation", async (req, res) => {
   const smId = req.query.sm_id;
   const semester = req.query.project_semester;
+
+  console.log('login-validation params:', { smId, semester });
 
   if (!smId || !semester) {
     return res.status(400).json({ error: "Missing sm_id or project_semester." });
@@ -65,6 +118,7 @@ app.get("/api/login-validation", async (req, res) => {
       SELECT 1 FROM projects WHERE sm_id = $1 AND project_semester = $2 LIMIT 1
     `;
     const smIdCheckResult = await pgPool.query(smIdCheckQuery, [smId, semester]);
+    console.log('login-validation rowCount:', smIdCheckResult.rowCount);
     if (smIdCheckResult.rowCount === 0) {
       return res.status(404).json({ error: `sm_id ${smId} not found for semester ${semester}.` });
     }
@@ -312,58 +366,20 @@ app.get("/api/start-draft", async (req, res) => {
       };
     }
 
-    await postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC });
-
-    // Write data to JS files
-    try {
-      await fs.promises.writeFile(
-        path.join(__dirname, 'server', 'data', 'projects.js'),
-        `const smProjectsMap = ${JSON.stringify(smProjectsMap, null, 2)};\n\nmodule.exports = smProjectsMap;`
-      );
-    } catch (err) {
-      console.error("Error writing projects.js:", err);
-    }
-    try {
-      await fs.promises.writeFile(
-        path.join(__dirname, 'server', 'data', 'consultants.js'),
-        `const allConsultants = ${JSON.stringify(allConsultants, null, 2)};\n\nconst pickedConsultants = [];\n\n
-        module.exports = { allConsultants, pickedConsultants };`
-      );
-    } catch (err) {
-      console.error("Error writing consultants.js:", err);
-    }
-    try {
-      await fs.promises.writeFile(
-        path.join(__dirname, 'server', 'data', 'smData.js'),
-        `const allSMs = ${JSON.stringify(allSMs, null, 2)};\n\nmodule.exports = allSMs;`
-      );
-    } catch (err) {
-      console.error("Error writing smData.js:", err);
-    }
-    try {
-      await fs.promises.writeFile(
-        path.join(__dirname, 'server', 'data', 'pmData.js'),
-        `const allPM = ${JSON.stringify(allPM, null, 2)};\n\nmodule.exports = allPM;`
-      );
-    } catch (err) {
-      console.error("Error writing pmData.js:", err);
-    }
-    try {
-      await fs.promises.writeFile(
-        path.join(__dirname, 'server', 'data', 'scData.js'),
-        `const allSC = ${JSON.stringify(allSC, null, 2)};\n\nmodule.exports = allSC;`
-      );
-    } catch (err) {
-      console.error("Error writing scData.js:", err);
-    }
-
-    return res.json({
+    // Respond immediately to avoid blocking the client
+    res.json({
       message: "Draft data generated successfully.",
       smCount: Object.keys(allSMs).length,
-      // projectCount: smProjectsResult.rows.length,
       projectCount: projectIdSet.size,
       consultantCount: consultantsResult.rows.length
     });
+
+    // Perform Google Sheets posting and file writes in background (non-blocking)
+    writeDataFilesAndPostToSheets(smProjectsMap, allConsultants, allSMs, allPM, allSC)
+      .catch(err => {
+        console.error("Background operations failed (non-critical):", err);
+        // These failures won't break the draft since data is already in memory
+      });
 
   } catch (err) {
     console.error("Error in /api/start-draft:", err);
@@ -425,133 +441,34 @@ app.post("/api/import-project-data", async (req, res) => {
 // Register all socket event handlers
 registerSocketHandlers(io);
 
+// Graceful shutdown handler for PM2 restarts
+process.on('SIGINT', async () => {
+  console.log('\n🔴 SIGINT received - shutting down gracefully');
+  
+  // Close all socket connections
+  io.close(() => {
+    console.log('✅ All socket connections closed');
+  });
+  
+  // Close database pool
+  await pgPool.end();
+  console.log('✅ Database connections closed');
+  
+  // Close HTTP server
+  server.close(() => {
+    console.log('✅ HTTP server closed');
+    process.exit(0);
+  });
+  
+  // Force exit after 10 seconds if graceful shutdown fails
+  setTimeout(() => {
+    console.error('⚠️ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+});
+
 // Start the server and listen on port 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🟢 Server running on port ${PORT}\nTest using this: ${process.env.BASE_API_URL}`);
 });
-
-// Deprecated endpoints, kept for reference
-// app.get("/api/get-projects", async (req, res) => {
-//   const smId = req.query.sm_id; // Get sm_id from query parameters
-//   const semester = req.query.project_semester;
-  
-//   try{
-//     //Fetch projects grouped by sm_id
-//     const projectsQuery = `
-//       SELECT 
-//           project_id,
-//           project_semester,
-//           project_name,
-//           client_name,
-//           em_id,
-//           sm_id,
-//           pm_id,
-//           sc1_id,
-//           sc2_id
-//       FROM 
-//           projects
-//       WHERE
-//           sm_id = $1 AND
-//           project_semester = $2
-
-    
-//     `;
-//     const projectsResult = await pgPool.query(projectsQuery, [smId, semester]);
-
-//     // Step 3: Handle response
-//     if (projectsResult.rows.length === 0) {
-//       return res.status(404).json({ message: "No current projects found for the given sm_id in the semester." });
-//     }
-
-//     res.json({
-//       message: "Current projects grouped by sm_id and semester",
-//       data: projectsResult.rows,
-//     });
-//   } catch (error) {
-//     console.error("Error executing query:", error);
-//     res.status(500).json({ error: "Internal server error." });
-//   }
-// });
-  
-// app.get("/api/get-consultants", async (req, res) => {
-
-// try {
-//   const projectsQuery =`
-//     SELECT
-//       project_id,
-//     FROM
-//       projects
-//     WHERE
-//       project_semester = $1
-//   `;
-
-//   const staffedConsultantQuery = `
-//     SELECT 
-//       user_id,
-//     FROM 
-//       consultant_projects
-//     WHERE
-//       project_id = ANY($1)
-
-//   `;
-
-//   const consultantsQuery = `
-//     SELECT 
-//       u.user_id,
-//       u.name,
-//       u.email,
-//       u.curr_role,
-//       u.gender,
-//       u.race,
-//       u.us_citizen,
-//       u.residency,
-//       u.first_gen,
-//       u.netid,
-//       c.status,
-//       c.year,
-//       c.major,
-//       c.minor,
-//       c.college,
-//       c.availability_mon,
-//       c.availability_tue,
-//       c.availability_wed,
-//       c.availability_thu,
-//       c.availability_fri,
-//       c.availability_sat,
-//       c.availability_sun,
-//       c.consultant_score,
-//       c.semesters_in_ibc,
-//       c.time_zone,
-//       c.willing_to_travel,
-//       c.week_before_finals_availability,
-//       c.industry_interests,
-//       c.functional_area_interests
-//     FROM consultants c
-//     JOIN users u ON c.user_id = u.user_id
-//     WHERE c.status != 'Deferred'
-//       AND u.curr_role IN ('NC', 'EC')
-//       AND user_id NOT IN ($1);
-//   `;
-
-//   const curr_projects = await pgPool.query(projectsQuery, [semester]);
-//   const projectIds = curr_projects.rows.map(row => row.project_id);
-
-//   const staffed_consultants = await pgPool.query(staffedConsultantQuery, [projectIds]);
-//   const staffedConsultantIds = staffed_consultants.rows.map(row => row.user_id);
-  
-//   const result = await pgPool.query(consultantsQuery, [staffedConsultantIds]);
-  
-//   if (result.rows.length === 0) {
-//     return res.status(404).json({ message: "No consultants found matching criteria." });
-//   }
-  
-//   res.json({
-//     message: "Consultant directory fetched successfully.",
-//     data: result.rows,
-//   });
-// } catch (error) {
-//   console.error("Error fetching consultant directory:", error);
-//   res.status(500).json({ error: "Internal server error." });
-// }
-// });

@@ -17,12 +17,112 @@ const pgPool = require('../../db.js'); // Adjust path based on file location
 const { all, post } = require('axios');
 
 let selectedConsultants = Object.keys(allConsultants).length;
+
+// Google Sheets queue and background flusher to prevent blocking
+const sheetQueue = [];
+let sheetFlushTimer = null;
+
+/**
+ * Flushes queued Google Sheet updates in the background
+ * This prevents blocking the main event loop during picks
+ */
+async function flushSheetQueue() {
+  if (sheetQueue.length === 0) return;
+  
+  const batch = sheetQueue.splice(0, sheetQueue.length);
+  console.log(`Flushing ${batch.length} queued sheet updates`);
+  
+  for (const item of batch) {
+    postToGoogleSheet(item).catch(err => {
+      console.error("[Non-critical] Sheet write failed:", err.message);
+      // Could implement retry queue here if needed
+    });
+  }
+}
+
+/**
+ * Queues a Google Sheet update and schedules flush if needed
+ * @param {Object} data - Data to post to Google Sheets
+ */
+function queueSheetUpdate(data) {
+  sheetQueue.push(data);
+  
+  // Schedule flush if not already scheduled (batch updates every 2 seconds)
+  if (!sheetFlushTimer) {
+    sheetFlushTimer = setTimeout(() => {
+      flushSheetQueue();
+      sheetFlushTimer = null;
+    }, 2000);
+  }
+}
+
+// Pick processing mutex to prevent race conditions
+let isProcessingPick = false;
+const pickQueue = [];
+
+/**
+ * Processes the next queued pick if any
+ * @param {Object} io - Socket.IO server instance
+ */
+function processNextPick(io) {
+  if (pickQueue.length > 0 && !isProcessingPick) {
+    const next = pickQueue.shift();
+    isProcessingPick = true;
+    handlePick(io, next.socket, next.data)
+      .catch(err => {
+        console.error('[_internal_process_pick] ERROR processing queued pick:', err);
+        next.socket.emit(
+          'system message',
+          'An error occurred processing your pick. Please try again.'
+        );
+      })
+      .finally(() => {
+        isProcessingPick = false;
+        processNextPick(io);
+      });
+  }
+}
 /**
  * Registers all socket event handlers for the application.
  *
  * @param {Server} io - The Socket.IO server instance.
  */
 function registerSocketHandlers(io) {
+  // Reset draft state on server startup to clear any stale data
+  // This ensures we start fresh after server restarts
+  console.log('🔄 Initializing socket handlers - resetting draft state');
+  draftState.reset();
+  console.log(`✅ Draft state reset complete. Drafters count: ${draftState.drafters.length}`);
+  
+  // Aggressive cleanup: validate Socket.IO connections every 30 seconds
+  setInterval(() => {
+    const before = draftState.drafters.length;
+    const invalidDrafters = [];
+    
+    // Find drafters with no active socket connection
+    for (const drafter of draftState.drafters) {
+      if (drafter.id && !io.sockets.sockets.get(drafter.id)) {
+        console.warn(`⚠️ Found phantom drafter: ${drafter.name} (${drafter.userId}) with dead socket ${drafter.id}`);
+        invalidDrafters.push(drafter);
+      }
+    }
+    
+    // Remove phantom drafters
+    for (const phantom of invalidDrafters) {
+      const idx = draftState.drafters.findIndex(d => d.userId === phantom.userId);
+      if (idx !== -1) {
+        draftState.drafters.splice(idx, 1);
+        console.log(`🧹 Removed phantom drafter: ${phantom.name}`);
+      }
+    }
+    
+    if (invalidDrafters.length > 0) {
+      const after = draftState.drafters.length;
+      console.log(`🧹 Phantom cleanup: ${before} -> ${after} drafters (removed ${invalidDrafters.length})`);
+      io.emit('lobby update', draftState.drafters.filter(d => !d.isDisconnected && !d.isTemporarilyDisconnected));
+    }
+  }, 30000); // Every 30 seconds
+  
   // Handle a new client connection
   io.on('connection', (socket) => {
     /**
@@ -100,7 +200,34 @@ function registerSocketHandlers(io) {
       }
 
       // Prevent duplicate registration for the same socket
-      if (draftState.drafters.find((u) => u.userId === UserID)) {
+      const existingDrafter = draftState.drafters.find((u) => u.userId === UserID);
+      if (existingDrafter) {
+        // Check if this is a reconnection attempt
+        if (existingDrafter.isTemporarilyDisconnected || existingDrafter.isDisconnected || !existingDrafter.id) {
+          // This is a reconnection - update the socket ID and clear ALL disconnect flags
+          existingDrafter.id = socket.id;
+          existingDrafter.isTemporarilyDisconnected = false;
+          existingDrafter.isDisconnected = false;
+          delete existingDrafter.disconnectTime;
+          
+          console.log(`[Reconnect] ${existingDrafter.name} reconnected (draft started: ${draftState.isDraftStarted})`);
+          socket.emit('registration confirmed', existingDrafter);
+          socket.emit('assigned projects', smProjectsMap[UserID] || {});
+          socket.emit('all consultants', allConsultants);
+          socket.emit('all pm', allPM);
+          socket.emit('all sc', allSC);
+          
+          // If draft has started, send draft state
+          if (draftState.isDraftStarted) {
+            socket.emit('draft rejoined');
+            emitDraftStatus(io);
+            updatePrivileges(io);
+          }
+          
+          io.emit('lobby update', draftState.drafters.filter(d => !d.isDisconnected));
+          return;
+        }
+        
         socket.emit('registration rejected', 'This SM ID is already in use by another user.');
         return;
       }
@@ -122,6 +249,8 @@ function registerSocketHandlers(io) {
       // Add the SM to the list of drafters
       const newDrafter = { id: socket.id, userId: UserID, name: smName || UserID };
       draftState.drafters.push(newDrafter);
+      
+      console.log(`✅ [Registration] New drafter added: ${smName} (${UserID}, socket: ${socket.id}). Total drafters: ${draftState.drafters.length}`);
 
       // Notify the client of successful registration
       socket.emit('registration confirmed', newDrafter);
@@ -134,56 +263,56 @@ function registerSocketHandlers(io) {
       io.emit('lobby update', draftState.drafters);
     });
 
-socket.on('kick user', ({ userId }) => {
-  console.log(`[Kick] Request to remove userId=${userId}`);
+    socket.on('kick user', ({ userId }) => {
+      console.log(`[Kick] Request to remove userId=${userId}`);
 
-  const idx = draftState.drafters.findIndex(d => d.userId === userId);
-  if (idx === -1) {
-    console.log('[Kick] No matching user found.');
-    return;
-  }
-
-  const removed = draftState.drafters.splice(idx, 1)[0];
-  if (!removed) return;
-
-  console.log(`[Kick] ${removed.name} removed from draft.`);
-
-  // Mark as kicked and disconnect
-  removed.wasKicked = true;
-  const sock = io.sockets.sockets.get(removed.id);
-  if (sock) {
-    sock.wasKicked = true;
-    sock.disconnect(true);
-  }
-
-  // If we’re in the middle of a draft, handle turn logic
-  if (draftState.isDraftStarted) {
-    // Adjust current turn if the removed user was up next
-    if (idx === draftState.currentPrivilegedUserIndex) {
-      console.log(`[Kick] ${removed.name} was current turn — rotating turn.`);
-      // Clamp index so we don’t go out of range
-      if (draftState.currentPrivilegedUserIndex >= draftState.drafters.length) {
-        draftState.currentPrivilegedUserIndex = 0;
+      const idx = draftState.drafters.findIndex(d => d.userId === userId);
+      if (idx === -1) {
+        console.log('[Kick] No matching user found.');
+        return;
       }
-      rotatePrivileges(io);
-    } else if (idx < draftState.currentPrivilegedUserIndex) {
-      // If the removed user was before the current turn, shift index left
-      draftState.currentPrivilegedUserIndex = Math.max(
-        0,
-        draftState.currentPrivilegedUserIndex - 1
-      );
-    }
-  }
 
-  // Notify all clients
-  io.emit('system message', `${removed.name} was kicked from the draft.`);
-  io.emit('user kicked', userId);
-  io.emit('lobby update', draftState.drafters);
-  emitDraftStatus(io);
-});
+      const removed = draftState.drafters.splice(idx, 1)[0];
+      if (!removed) return;
 
+      console.log(`[Kick] ${removed.name} removed from draft.`);
 
+      // Mark as kicked and disconnect
+      removed.wasKicked = true;
+      const sock = io.sockets.sockets.get(removed.id);
+      if (sock) {
+        console.log(`[Kick] Disconnecting socket ${removed.id}`);
+        sock.wasKicked = true;
+        sock.disconnect(true);
+      } else {
+        console.log(`[Kick] Socket ${removed.id} not found (phantom drafter or already disconnected)`);
+      }
 
+      // If we’re in the middle of a draft, handle turn logic
+      if (draftState.isDraftStarted) {
+        // Adjust current turn if the removed user was up next
+        if (idx === draftState.currentPrivilegedUserIndex) {
+          console.log(`[Kick] ${removed.name} was current turn — rotating turn.`);
+          // Clamp index so we don’t go out of range
+          if (draftState.currentPrivilegedUserIndex >= draftState.drafters.length) {
+            draftState.currentPrivilegedUserIndex = 0;
+          }
+          rotatePrivileges(io);
+        } else if (idx < draftState.currentPrivilegedUserIndex) {
+          // If the removed user was before the current turn, shift index left
+          draftState.currentPrivilegedUserIndex = Math.max(
+            0,
+            draftState.currentPrivilegedUserIndex - 1
+          );
+        }
+      }
+
+      // Notify all clients
+      io.emit('system message', `${removed.name} was kicked from the draft.`);
+      io.emit('user kicked', userId);
+      io.emit('lobby update', draftState.drafters);
+      emitDraftStatus(io);
+    });
 
 
     /**
@@ -194,6 +323,40 @@ socket.on('kick user', ({ userId }) => {
       // Trigger data generation on the backend
       await fetch(`${baseApiUrl}/api/start-draft?project_semester=${project_semester}`);
 
+      // Wait for files to be written (background operation in server.js)
+      // Poll for file existence/freshness to avoid race condition
+      const fs = require('fs');
+      const path = require('path');
+      const maxWaitTime = 10000; // 10 seconds max wait (increased from 5)
+      const startTime = Date.now();
+      
+      console.log('⏳ Waiting for data files to be ready...');
+      
+      while (Date.now() - startTime < maxWaitTime) {
+        try {
+          // Check if consultants file exists and was recently modified
+          const consultantsPath = path.join(__dirname, '../data/consultants.js');
+          const stats = fs.statSync(consultantsPath);
+          const fileAge = Date.now() - stats.mtimeMs;
+          
+          // If file was modified in last 15 seconds, assume it's fresh
+          if (fileAge < 15000) {
+            console.log(`✅ Data files ready (file age: ${Math.round(fileAge/1000)}s)`);
+            break;
+          }
+        } catch (err) {
+          // File doesn't exist yet, wait a bit
+          console.log('⏳ Files not ready yet, waiting...');
+        }
+        
+        // Wait 200ms before checking again (increased from 100ms)
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      if (Date.now() - startTime >= maxWaitTime) {
+        console.warn('⚠️ Timeout waiting for files, proceeding anyway');
+      }
+
       // Clear require cache to ensure we load updated files
       delete require.cache[require.resolve('../data/consultants')];
       delete require.cache[require.resolve('../data/projects')];
@@ -202,11 +365,27 @@ socket.on('kick user', ({ userId }) => {
       delete require.cache[require.resolve('../data/scData')];
 
       // Reload latest data into memory
-      allConsultants = require('../data/consultants').allConsultants;
-      smProjectsMap = require('../data/projects');
-      allSMs = require('../data/smData');
-      allPM = require('../data/pmData');
-      allSC = require('../data/scData');
+      try {
+        allConsultants = require('../data/consultants').allConsultants;
+        smProjectsMap = require('../data/projects');
+        allSMs = require('../data/smData');
+        allPM = require('../data/pmData');
+        allSC = require('../data/scData');
+
+        // Validate data was loaded
+        console.log(`📊 Loaded data: ${Object.keys(allConsultants || {}).length} consultants, ${Object.keys(smProjectsMap || {}).length} projects, ${(allSMs || []).length} SMs, ${(allPM || []).length} PMs, ${(allSC || []).length} SCs`);
+
+        if (!allConsultants || Object.keys(allConsultants).length === 0) {
+          console.error('❌ No consultants loaded!');
+        }
+        if (!smProjectsMap || Object.keys(smProjectsMap).length === 0) {
+          console.error('❌ No projects loaded!');
+        }
+      } catch (err) {
+        console.error('❌ Error loading data files:', err);
+        io.emit('draft error', { message: 'Failed to load draft data. Please try again.' });
+        return;
+      }
 
       // Reset state
       pickedConsultants = [];
@@ -258,7 +437,7 @@ socket.on('kick user', ({ userId }) => {
         // Log sheet posting in background
         postToGoogleSheet(data).catch(err => {
           console.error("Sheet post failed:", err);
-          // optional: notify admins or retry
+          // optionally retry here
         });
       }
     });
@@ -274,10 +453,8 @@ socket.on('kick user', ({ userId }) => {
       // Log sheet posting in background
       postToGoogleSheet(data).catch(err => {
         console.error("Sheet post failed:", err);
-        // optional: notify admins or retry
+        // optionally retry here
       });
-
-      // console.log("data being passed is", data);
 
       try {
         const response = await fetch(`${baseApiUrl}/api/import-project-data`, {
@@ -298,54 +475,135 @@ socket.on('kick user', ({ userId }) => {
 
     })
 
-    /**
-     * Event: 'pick consultant'
-     * Handles the selection of a consultant for a project.
-     */
-    socket.on('pick consultant', async ({ consultantId, projectId }) => {
-      // Ensure the draft has started
-      if (!draftState.isDraftStarted) return;
+    socket.on('pick consultant', ({ consultantId, projectId }) => {
+      console.log(
+        '[pick consultant] received from socket',
+        socket.id,
+        'consultantId=',
+        consultantId,
+        'projectId=',
+        projectId
+      );
 
-      //picked count
+      if (isProcessingPick) {
+        pickQueue.push({ socket, data: { consultantId, projectId } });
+        console.log(`[pick consultant] queued pick (queue size now ${pickQueue.length})`);
+        return;
+      }
+
+      isProcessingPick = true;
+      handlePick(io, socket, { consultantId, projectId })
+        .catch(err => {
+          console.error('[_internal_process_pick] ERROR processing pick:', err);
+          socket.emit(
+            'system message',
+            'An error occurred processing your pick. Please try again.'
+          );
+        })
+        .finally(() => {
+          isProcessingPick = false;
+          processNextPick(io);
+        });
+    });
+
+    // helper for processing picks
+    async function handlePick(io, socket, { consultantId, projectId }) {
+      console.log('[_internal_process_pick] START', { consultantId, projectId });
+
+      if (!draftState.isDraftStarted) {
+        console.log('[_internal_process_pick] rejected: draft not started');
+        return;
+      }
+
       selectedConsultants -= 1;
 
-      // Validate that it's the current user's turn
       const currentSM = draftState.drafters[draftState.currentPrivilegedUserIndex];
+      console.log('[_internal_process_pick] currentSM:', currentSM);
+
+      if (!currentSM) {
+        console.log('[_internal_process_pick] rejected: no current SM');
+        selectedConsultants += 1;
+        return;
+      }
+
       if (socket.id !== currentSM.id) {
+        console.log(
+          '[_internal_process_pick] rejected: not your turn. socket.id=',
+          socket.id,
+          'owner.id=',
+          currentSM.id
+        );
         socket.emit('system message', 'Not your turn.');
+        selectedConsultants += 1;
         return;
       }
 
-      // Ensure the consultant hasn't already been picked
       if (draftState.draftedConsultants.has(consultantId)) {
+        console.log('[_internal_process_pick] rejected: already picked', consultantId);
         socket.emit('system message', 'Already picked.');
+        selectedConsultants += 1;
         return;
       }
 
-      // Validate the consultant ID
       const consultant = allConsultants[consultantId];
+      console.log('[_internal_process_pick] consultant lookup:', consultant);
+
       if (!consultant) {
+        console.log('[_internal_process_pick] rejected: invalid consultant', consultantId);
         socket.emit('system message', 'Invalid consultant.');
+        selectedConsultants += 1;
         return;
       }
 
-      // Validate the project ID
-      const userProjects = smProjectsMap[currentSM.userId];
-      if (!userProjects || !userProjects[projectId]) {
+      const currentSMProjects = smProjectsMap[currentSM.userId];
+      console.log(
+        '[_internal_process_pick] currentSMProjects keys:',
+        currentSMProjects ? Object.keys(currentSMProjects) : 'NO PROJECTS'
+      );
+
+      if (!currentSMProjects || !currentSMProjects[projectId]) {
+        console.log(
+          '[_internal_process_pick] rejected: invalid project',
+          projectId,
+          'for user',
+          currentSM.userId
+        );
         socket.emit('system message', 'Invalid project.');
+        selectedConsultants += 1;
         return;
       }
 
-      // Assign the consultant to the project
-      userProjects[projectId][consultant.Role].push(consultant);
+      // Defensive role → bucket mapping
+      const rawRole = consultant.Role;
+      console.log('[_internal_process_pick] consultant.Role:', rawRole);
+
+      const bucketKey =
+        rawRole === 'NC' || rawRole === 'EC'
+          ? rawRole
+          : 'NC'; // fallback so we don't blow up on weird roles
+
+      if (!currentSMProjects[projectId][bucketKey]) {
+        console.log(
+          `[_internal_process_pick] creating missing bucket ${bucketKey} for project ${projectId}`
+        );
+        currentSMProjects[projectId][bucketKey] = [];
+      }
+
+      console.log(
+        '[_internal_process_pick] pushing consultant into',
+        bucketKey,
+        'for project',
+        projectId
+      );
+
+      currentSMProjects[projectId][bucketKey].push(consultant);
       draftState.draftedConsultants.set(consultantId, consultant);
+      pickedConsultants.push(consultant);
 
-      //keep track of picked consultants
-      pickedConsultants.push(consultant)
-
-      // Post the selection to Google Sheets
+      
+      // Prepare data for Google Sheets (queue it instead of blocking)
       const timestamp = new Date().toLocaleString();
-      const data = {
+      const pickData = {
         type: 'staffingHistory',
         timestamp: timestamp,
         smId: currentSM.userId,
@@ -354,8 +612,8 @@ socket.on('kick user', ({ userId }) => {
         consultantName: consultant.Name,
         consultantRole: consultant.Role,
         projectId: projectId,
-        projectName: userProjects[projectId]['Description'],
-        message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${userProjects[projectId]['Description']} (${projectId}) at ${timestamp}`
+        projectName: currentSMProjects[projectId]['Description'],
+        message: `${currentSM.name} picked ${consultant.Name} (${consultant.Role}) for ${currentSMProjects[projectId]['Description']} (${projectId}) at ${timestamp}`
       };
 
       if (selectedConsultants === 0) {
@@ -363,12 +621,17 @@ socket.on('kick user', ({ userId }) => {
         
         io.emit('draft finalizing', 'Finalizing draft and uploading to database...');
         
-        await Promise.all([
-          postToGoogleSheet(data),
-          postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC })
-        ]);
+        // Queue the final sheet updates but don't block on them
+        queueSheetUpdate(pickData);
+        queueSheetUpdate({ smProjectsMap, allConsultants, allPM, allSC });
         
-        await handleEndDraft(io);
+        // Force immediate flush for draft end
+        setTimeout(() => flushSheetQueue(), 0);
+        
+        // Handle end draft in parallel
+        handleEndDraft(io).catch(err => {
+          console.error('Error ending draft:', err);
+        });
 
         emitDraftStatus(io);
         io.emit('endDraft', 'All consultants have been drafted. Ending draft.');
@@ -377,23 +640,22 @@ socket.on('kick user', ({ userId }) => {
         return; 
       }
       
-      // Log sheet posting in background
-      postToGoogleSheet(data).catch(err => {
-        console.error("Sheet post failed:", err);
-        // optional: notify admins or retry
-      });
+      // Queue Google Sheets updates (non-blocking)
+      queueSheetUpdate(pickData);
+      queueSheetUpdate({ smProjectsMap, allConsultants, allPM, allSC });
 
-      postToGoogleSheet({ smProjectsMap, allConsultants, allPM, allSC }).catch(err => {
-        console.error("Sheet post failed:", err);
-        // optional: notify admins or retry
-      });
 
-      // Notify all clients of the selection
-      io.emit('system message', `${currentSM.name} picked ${consultant.Name} for ${userProjects[projectId]['Description']} (${projectId})`);
+      io.emit(
+        'system message',
+        `${currentSM.name} picked ${consultant.Name} for ${
+          currentSMProjects[projectId]['Description']
+        } (${projectId})`
+      );
 
       emitDraftStatus(io);
       rotatePrivileges(io);
-    });
+    }
+
 
     /**
      * Event: 'defer turn'
@@ -473,18 +735,17 @@ socket.on('kick user', ({ userId }) => {
      * Event: 'disconnect'
      * Handles a client disconnecting from the server.
      */
-   socket.on('disconnect', () => {
-  if (socket.wasKicked) {
-    console.log(`[Disconnect] Skipping kicked user ${socket.id}`);
-    return;
-  }
+    socket.on('disconnect', (reason) => {
+      if (socket.wasKicked) {
+        console.log(`[Disconnect] Skipping kicked user ${socket.id}`);
+        return;
+      }
 
+      console.log(`[Disconnect] Socket ${socket.id} disconnected. Reason: ${reason}`);
 
-  const index = draftState.drafters.findIndex((u) => u.id === socket.id);
-  if (index !== -1) {
-    const drafter = draftState.drafters[index];
-
-
+      const index = draftState.drafters.findIndex((u) => u.id === socket.id);
+      if (index !== -1) {
+        const drafter = draftState.drafters[index];
         if (draftState.isDraftStarted) {
           // Similar to leave lobby, but due to disconnection
           draftState.disconnectedSMs.set(drafter.userId, {
@@ -507,10 +768,31 @@ socket.on('kick user', ({ userId }) => {
             // findNextActivePlayer();
           }
         } else {
-          // Pre-draft regular disconnect
-          draftState.drafters.splice(index, 1);
-          io.emit('system message', `${drafter.name} disconnected.`);
-          io.emit('lobby update', draftState.drafters);
+          // Pre-draft disconnect - give them time to reconnect
+          // DON'T remove immediately, wait 5 seconds
+          console.log(`[Disconnect] ${drafter.name} disconnected from lobby, waiting 5s for reconnect`);
+          
+          // Mark as temporarily disconnected
+          drafter.isTemporarilyDisconnected = true;
+          drafter.disconnectTime = Date.now();
+          drafter.id = null; // Clear socket ID immediately
+          
+          // After 5 seconds, if they haven't reconnected, remove them
+          setTimeout(() => {
+            // Check if they're still disconnected and haven't reconnected
+            const currentIndex = draftState.drafters.findIndex((u) => u.userId === drafter.userId);
+            if (currentIndex !== -1) {
+              const currentDrafter = draftState.drafters[currentIndex];
+              if (currentDrafter.isTemporarilyDisconnected && 
+                  Date.now() - currentDrafter.disconnectTime >= 5000) {
+                // They didn't reconnect, remove them
+                draftState.drafters.splice(currentIndex, 1);
+                console.log(`[Disconnect] ${drafter.name} removed from lobby after timeout`);
+                io.emit('system message', `${drafter.name} disconnected.`);
+                io.emit('lobby update', draftState.drafters.filter(d => !d.isTemporarilyDisconnected && !d.isDisconnected));
+              }
+            }
+          }, 5000);
         }
       }
     });
@@ -533,7 +815,7 @@ async function handleEndDraft(io) {
   const data = {"remainingConsultants" : remainingConsultants };
   postToGoogleSheet(data).catch(err => {
     console.error("Sheet post failed:", err);
-    // optional: notify admins or retry
+    // can implement some retry logic here
   });
 
   try {
@@ -549,7 +831,6 @@ async function handleEndDraft(io) {
   emitDraftStatus(io);
   draftState.isDraftStarted = false;
 }
-
 
 /**
  * Rotates the privileges to the next drafter in the queue.
